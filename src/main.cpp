@@ -6,7 +6,7 @@
 */
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
-#include <EthernetClient.h>
+//#include <EthernetClient.h>
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
 #include <WifiManager.h>
@@ -17,6 +17,8 @@
 #include <Fonts/FreeSans12pt7b.h>
 #include "Adafruit_ILI9341.h"
 #include <XPT2046_Touchscreen.h>
+#include <Wire.h>
+#include <PubSubClient.h>
 
 #define CS_PIN D2
 XPT2046_Touchscreen ts(CS_PIN);
@@ -44,14 +46,18 @@ unsigned long currentUploadTime;
 unsigned long previousUploadTime;
 int passwordLength;
 int SSIDLength;
-int channelIDLength;
-int writeAPILength;
+int MQTTserverLength;
+int DeviceIDLength;
 char ssid[20];
 char password[20];
-char channelID[20]; // = "864288";
-char channelAPIkey[20]; // = "37SAHQPEQ7FOBC20";
-char server[] = "api.thingspeak.com";
+//char channelID[20];            // = "10.73.12.1"; 
+//char channelAPIkey[20];        // = "EspDosimeter"; 
+char MQTTserverIP[20];           // = "10.73.12.1"; 
+char MQTTdeviceID[20];           // = "EspDosimeter"; 
+
+//char server[] = "10.73.12.1";
 int attempts; // number of connection attempts when device starts up in monitoring mode
+int MQTTattempts; // number of MQTT connection attempts when device starts up in monitoring mode
 WiFiClient client;
 
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
@@ -89,7 +95,7 @@ int integrationMode = 0; // 0 = medium, 1 = fast, 2 == slow;
 
 bool doseUnits = 0; // 0 = Sievert, 1 = Rem
 unsigned int alarmThreshold = 5;
-unsigned int conversionFactor = 175;
+unsigned int conversionFactor = 700; //175;
 
 int x, y; // touch points
 
@@ -103,12 +109,18 @@ int batteryUpdateCounter = 29;
 const int saveUnits = 0;
 const int saveAlertThreshold = 1; // Addresses for storing settings data in the EEPROM
 const int saveCalibration = 2;
-const int saveDeviceMode = 3;
+/*const int saveDeviceMode = 3;
 const int saveLoggingMode = 4;
 const int saveSSIDLen = 5;
 const int savePWLen = 6;
 const int saveIDLen = 7;
-const int saveAPILen = 8;
+const int saveAPILen = 8; */
+const int saveDeviceMode = 6;
+const int saveLoggingMode = 7;
+const int saveSSIDLen = 8;
+const int savePWLen = 9;
+const int saveIDLen = 10;
+const int saveAPILen = 11;
 
 // Data Logging variables
 int addr = 200;                 // starting address for data logging
@@ -133,8 +145,30 @@ bool isLogging;
 
 bool deviceMode;
 
+// PubSubClient variables
+const char* mqtt_server = "10.73.12.1";  // Имя сервера MQTT
+const int mqtt_port = 1883;              // Порт для подключения к серверу MQTT
+const char *mqtt_user = "";
+const char *mqtt_pass = "";
+
+//String subscr_topic = "EspDosimeter/Control/";
+//String prefix = "EspDosimeter/";
+//String buf_recv;
+
+PubSubClient MQTTclient(client);
+#define MSG_BUFFER_SIZE	(50)
+
+char msg[MSG_BUFFER_SIZE];
+char topic[MSG_BUFFER_SIZE];
+char buzzertopic[MSG_BUFFER_SIZE];
+char lighttopic[MSG_BUFFER_SIZE];
+char iptopic[MSG_BUFFER_SIZE];
+char batterytopic[MSG_BUFFER_SIZE];
+char ConvFactorTopic[MSG_BUFFER_SIZE];
+float value = 0;
+
 // interrupt routine declaration
-void ICACHE_RAM_ATTR isr();
+void isr();
 
 unsigned int previousIntMicros;              // timers to limit count increment rate in the ISR
 
@@ -312,11 +346,141 @@ void EEPROMWritelong(int address, long value); // logging functions
 void createJsonFile();
 void clearLogs();
 
+//=============================================================================================================================
+void MQTTreconnect() 
+{
+  MQTTattempts = 0;
+  while ((!MQTTclient.connected()) && (MQTTattempts < 3))      // Loop until we're reconnected
+  {   
+    Serial.print("Attempting MQTT connection...");
+    String clientId = "ESP_Dosimeter";
+    if (MQTTclient.connect(clientId.c_str()))                  // Attempt to connect
+    {                                                          
+      Serial.println("connected");
+      MQTTclient.subscribe(buzzertopic);                       // ... and resubscribe
+      MQTTclient.subscribe(lighttopic);                       // ... and resubscribe
+      MQTTclient.subscribe(ConvFactorTopic);                       // ... and resubscribe
+      MQTTclient.publish(iptopic, (WiFi.localIP().toString().c_str()));
+    } 
+    else 
+    {
+      Serial.print("failed, Attempts=");
+      Serial.println(uint32(MQTTattempts+1));
+      MQTTattempts++;
+      //deviceMode = 0; 
+    }
+  }
+}//                                                              void MQTTreconnect() 
+//=============================================================================================================================
+void callback(char* topic, byte* payload, unsigned int length)
+{
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+
+  String messageTemp;
+  
+  for (unsigned int i = 0; i < length; i++)
+  {
+    Serial.print((char)payload[i]);
+    messageTemp += (char)payload[i];
+  }
+  Serial.println();
+
+  if (String(topic) == String(buzzertopic)) 
+  {
+    Serial.print("Changing buzzer ");
+    if(messageTemp == "true")
+    {
+      Serial.println("to on");
+      buzzerSwitch = true;
+      if (page == 0)
+      {
+        tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
+        tft.drawBitmap(190, 208, buzzerOnBitmap, 45, 45, ILI9341_WHITE);
+      }
+      MQTTclient.publish(buzzertopic, "true");
+    }
+    else if(messageTemp == "false")
+    {
+      Serial.println("to off");
+      buzzerSwitch = false;
+      if (page == 0)
+      {
+        tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
+        tft.drawBitmap(190, 208, buzzerOffBitmap, 45, 45, ILI9341_WHITE);
+      }
+      MQTTclient.publish(buzzertopic, "false");
+    }
+    else 
+    {
+      Serial.println("Failed");
+    }
+  }
+  else if (String(topic) == String(lighttopic)) 
+  {
+    Serial.print("Changing light to ");
+    if(messageTemp == "true")
+    {
+      Serial.println("on");
+      ledSwitch = true;
+      if (page == 0)
+      {
+        tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
+        tft.drawBitmap(190, 153, ledOnBitmap, 45, 45, ILI9341_WHITE);
+      }
+      MQTTclient.publish(lighttopic, "true");
+    }
+    else if(messageTemp == "false")
+    {
+      Serial.println("off");
+      ledSwitch = false;
+      if (page == 0)
+      {
+        tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
+        tft.drawBitmap(190, 153, ledOffBitmap, 45, 45, ILI9341_WHITE);
+      }
+      MQTTclient.publish(lighttopic, "false");
+    }
+    else 
+    {
+      Serial.println("Error");
+    }
+  } 
+  else if (String(topic) == String(ConvFactorTopic)) 
+  {
+    if (atoi(messageTemp.c_str()) != conversionFactor)
+    {
+      EEPROMWritelong(saveCalibration, conversionFactor);
+      EEPROM.commit();
+      conversionFactor = atoi(messageTemp.c_str());
+
+      snprintf (msg, MSG_BUFFER_SIZE, "%i", conversionFactor);
+      MQTTclient.publish(ConvFactorTopic, msg);
+
+      Serial.print("Changing ConversionFactor to ");
+      Serial.println(conversionFactor);
+     
+      if (page == 4)     // if calibration page
+      {
+        tft.setFont();
+        tft.setTextSize(3);
+        tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+        tft.setCursor(161, 146);
+        tft.println(conversionFactor);
+        if (conversionFactor < 100)
+          tft.fillRect(197, 146, 22, 22, ILI9341_BLACK);
+      }
+    }
+  }
+}                                                        //void callback
+//=============================================================================================================================
 void setup()
 {
-  Serial.begin(38400);
+  Serial.begin(115200);
+
   ts.begin();
-  ts.setRotation(2);
+  ts.setRotation(0);
 
   tft.begin();
   tft.setRotation(2);
@@ -329,41 +493,53 @@ void setup()
 
   EEPROM.begin(4096);   // initialize emulated EEPROM sector with 4 kb
 
-  doseUnits = EEPROM.read(saveUnits);
-  alarmThreshold = EEPROM.read(saveAlertThreshold);
-  conversionFactor = EEPROM.read(saveCalibration);
-  deviceMode = EEPROM.read(saveDeviceMode);
-  isLogging = EEPROM.read(saveLoggingMode);
+  doseUnits = EEPROM.read(saveUnits);                                //Address = 0
+  alarmThreshold = EEPROM.read(saveAlertThreshold);                  //Address = 1
+  conversionFactor = EEPROMReadlong(saveCalibration);                //Address = 2
+  deviceMode = EEPROM.read(saveDeviceMode);                          //Address = 6
+  isLogging = EEPROM.read(saveLoggingMode);                          //Address = 7
+  SSIDLength = EEPROM.read(saveSSIDLen);                             //Address = 8
+  passwordLength = EEPROM.read(savePWLen);                           //Address = 9
+  MQTTserverLength = EEPROM.read(saveIDLen);                         //Address = 10
+  DeviceIDLength = EEPROM.read(saveAPILen);                          //Address = 11
+
   addr = EEPROMReadlong(96);
-
-  SSIDLength = EEPROM.read(saveSSIDLen);
-  passwordLength = EEPROM.read(savePWLen);
-  channelIDLength = EEPROM.read(saveIDLen);
-  writeAPILength = EEPROM.read(saveAPILen);
-
-  for (int i = 10; i < 10 + SSIDLength; i++)
+  
+  for (int i = 12; i < 12 + SSIDLength; i++)
   {
-    ssid[i - 10] = EEPROM.read(i);
+    ssid[i - 12] = EEPROM.read(i);
   }
-  Serial.println(ssid);
 
-  for (int j = 30; j < 30 + passwordLength; j++)
+  for (int j = 32; j < 32 + passwordLength; j++)
   {
-    password[j - 30] = EEPROM.read(j);
+    password[j - 32] = EEPROM.read(j);
   }
-  Serial.println(password);
 
-  for (int k = 50; k < 50 + channelIDLength; k++)
+  for (int k = 52; k < 52 + MQTTserverLength; k++)
   {
-    channelID[k - 50] = EEPROM.read(k);
+    MQTTserverIP[k - 52] = EEPROM.read(k);
   }
-  Serial.println(channelID);
 
-  for (int l = 70; l < 70 + writeAPILength; l++)
+  for (int l = 72; l < 72 + DeviceIDLength; l++)
   {
-    channelAPIkey[l - 70] = EEPROM.read(l);
+    MQTTdeviceID[l - 72] = EEPROM.read(l);
   }
-  Serial.println(channelAPIkey);
+
+  Serial.println("doseUnits: "+ String(doseUnits));
+  Serial.println("alarmThreshold: "+ String(alarmThreshold));  
+  Serial.println("conversionFactor: " + String(conversionFactor)); 
+  Serial.println("deviceMode: " + String(deviceMode));
+  Serial.println("isLogging: " + String(isLogging));
+  Serial.println("SSID: "+ String(ssid) + " Length: "+ String(SSIDLength));
+  Serial.println("Password: "+ String(password) + " Length: "+ String(passwordLength));
+  Serial.println("MQTTserver: "+ String(MQTTserverIP) + " Length: "+ String(MQTTserverLength));
+  Serial.println("DeviceID: "+ String(MQTTdeviceID) + " Length: "+ String(DeviceIDLength));
+
+  snprintf (buzzertopic, MSG_BUFFER_SIZE, "%s/Control/Buzzer", MQTTdeviceID );
+  snprintf (lighttopic, MSG_BUFFER_SIZE, "%s/Control/Light", MQTTdeviceID );
+  snprintf (iptopic, MSG_BUFFER_SIZE, "%s/System/IP", MQTTdeviceID );
+  snprintf (batterytopic, MSG_BUFFER_SIZE, "%s/System/Battery", MQTTdeviceID );
+  snprintf (ConvFactorTopic, MSG_BUFFER_SIZE, "%s/System/ConversionFactor", MQTTdeviceID );
 
   attachInterrupt(interruptPin, isr, FALLING);
 
@@ -384,34 +560,56 @@ void setup()
     tft.setFont(&FreeSans9pt7b);
     tft.setTextColor(ILI9341_WHITE);
     
-    tft.setCursor(38, 140);
+    tft.setCursor(38, 120);
     tft.println("Connecting to WiFi..");
+    Serial.print("Connecting to WiFi.. ");
 
-    while ((WiFi.status() != WL_CONNECTED) && (attempts < 300))
+    while ((WiFi.status() != WL_CONNECTED) && (attempts < 100))
     {
       delay(100);
       attempts ++;
     }
-    if (attempts >= 300)
+    if (attempts >= 100)
     {
       deviceMode = 0; 
-      tft.setCursor(45, 200);
+      tft.setCursor(45, 160);
       tft.println("Failed to connect.");
+      Serial.println("Failed to connect.");
       delay(1000);
     }
     else
     {
-      tft.setCursor(68, 200);
+      tft.setCursor(68, 160);
       tft.println("Connected!");
-      delay(1000);
+      Serial.println("Connected!");
+
+      tft.setCursor(55, 200);
+      tft.println("IP:"); 
+      tft.setCursor(78, 200);
+      tft.println(WiFi.localIP()); 
+
+      Serial.print("Local IP: ");
+      Serial.println(WiFi.localIP());     
+
+      delay(1500);
+
+      //MQTTclient.setSocketTimeout(70);
+      //MQTTclient.setKeepAlive(70);
+
+      MQTTclient.setServer(mqtt_server, mqtt_port);
+      MQTTclient.setCallback(callback);
+      
+      MQTTreconnect();
     }
     drawHomePage();
   }
-}
-
+} //                                                            void setup()
+//=============================================================================================================================
 void loop()
 {
-  if (page == 0) // homepage
+MQTTclient.loop();
+
+  if (page == 0)                                                // homepage
   {
     currentMillis = millis();
     if (currentMillis - previousMillis >= 1000)
@@ -438,8 +636,22 @@ void loop()
         }
         
         batteryUpdateCounter = 0;
-        Serial.println(batteryInput);
-        Serial.println(batteryPercent);
+//        Serial.println("BattADC: " + String(batteryInput));
+        Serial.println("BattPercent: " + String(batteryPercent) + "%");
+        snprintf (msg, MSG_BUFFER_SIZE, "%i", batteryPercent);
+        MQTTclient.publish(batterytopic, msg);
+      }
+
+      if (MQTTclient.connected())
+      {
+        tft.setTextSize(1);
+        tft.setFont(&FreeSans9pt7b);
+        tft.setCursor(157, 16);
+        tft.println("M");
+      }
+      else
+      {
+        tft.fillRect(157, 2, 18, 18, ILI9341_BLACK);
       }
 
       count[i] = currentCount;
@@ -485,13 +697,11 @@ void loop()
       {
         doseRate = averageCount / float(conversionFactor);
         totalDose = cumulativeCount / (60 * float(conversionFactor));
-        
       }
       else if (doseUnits == 1)
       {
         doseRate = averageCount / float(conversionFactor * 10.0);
         totalDose = cumulativeCount / (60 * float(conversionFactor * 10.0)); // 1 mRem == 10 uSv
-        
       }
 
       if (averageCount < conversionFactor/2) // 0.5 uSv/hr
@@ -597,7 +807,7 @@ void loop()
           previousDoseLevel = doseLevel;
         }
       }
-      Serial.println(currentCount);
+      //Serial.println(currentCount);
     } 
     // end of millis()-controlled block that runs once every second. The rest of the code on page 0 runs every loop
     if (currentCount > previousCount)
@@ -623,8 +833,14 @@ void loop()
     {
       wasTouched = 1;
       TS_Point p = ts.getPoint();
+       // Serial.print("P: ");
+       // Serial.println(p);
       x = map(p.x, TS_MINX, TS_MAXX, 240, 0); // get touch point and map to screen pixels
       y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
+        Serial.print("X: ");
+        Serial.println(x);
+        Serial.print("Y: ");
+        Serial.println(y);
 
       if ((x > 162 && x < 238) && (y > 259 && y < 318))
       {
@@ -677,6 +893,39 @@ void loop()
           tft.setCursor(169, 309);
           tft.println("180 s");
         }
+        if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to thingspeak every 5 minutes
+        {
+        if (WiFi.status() == WL_CONNECTED)
+          {
+            if (!MQTTclient.connected()) 
+            {
+              MQTTreconnect();
+            }
+            if (MQTTclient.connected()) 
+            {
+              if (integrationMode == 0) // change button based on touch and previous state
+              {
+                value = 60;
+              }
+              else if (integrationMode == 1)
+              {
+                value = 5;
+              }
+              else if (integrationMode == 2)
+              {
+                value = 180;
+              }
+              snprintf (msg, MSG_BUFFER_SIZE, "Integration Time: %f sec", value);
+              Serial.print("MQTT: Topic: ");
+              Serial.print(topic);
+              Serial.print(": ");
+              Serial.println(msg);
+              snprintf (msg, MSG_BUFFER_SIZE, "%f", value);
+              snprintf (topic, MSG_BUFFER_SIZE, "%s/System/Integration_Time", MQTTdeviceID );
+              MQTTclient.publish(topic, msg); 
+            }
+          } 
+        }
       }
       else if ((x > 64 && x < 159) && (y > 259 && y < 318)) // timed count 
       {
@@ -690,11 +939,13 @@ void loop()
         {
           tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 153, ledOnBitmap, 45, 45, ILI9341_WHITE);
+          MQTTclient.publish(lighttopic, "true");          
         }
         else
         {
           tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 153, ledOffBitmap, 45, 45, ILI9341_WHITE);
+          MQTTclient.publish(lighttopic, "false");
         }
       }
       else if ((x > 190 && x < 238) && (y > 205 && y < 256)) // toggle buzzer
@@ -704,11 +955,13 @@ void loop()
         {
           tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 208, buzzerOnBitmap, 45, 45, ILI9341_WHITE);
+          MQTTclient.publish(buzzertopic, "true");
         }
         else
         {
           tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 208, buzzerOffBitmap, 45, 45, ILI9341_WHITE);
+          MQTTclient.publish(buzzertopic, "false");
         }
       }
       else if ((x > 3 && x < 61) && (y > 259 && y < 316)) // settings button pressed
@@ -733,33 +986,47 @@ void loop()
         }
       }
     }
+
     if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to thingspeak every 5 minutes
     {
       currentUploadTime = millis();
-      if ((currentUploadTime - previousUploadTime) > 300000)
+      if ((currentUploadTime - previousUploadTime) > 15000)
       {
         previousUploadTime = currentUploadTime;
-        if (client.connect(server, 80))
+        if (WiFi.status() == WL_CONNECTED)
         {
-          String postStr = channelAPIkey;
-          postStr += "&field2=";
-          postStr += String(averageCount);
-          postStr += "\r\n\r\n";
-          char temp[50] = "X-THINGSPEAKAPIKEY:";
-          strcat(temp, channelAPIkey);
-          strcat(temp, "\n");
-          client.print("POST /update HTTP/1.1\n");
-          client.print("Host: api.thingspeak.com\n");
-          client.print("Connection: close\n");
-          client.print(temp);
-          client.print("Content-Type: application/x-www-form-urlencoded\n");
-          client.print("Content-Length: ");
-          client.print(postStr.length());
-          client.print("\n\n");
-          client.print(postStr);
-          Serial.println(postStr);
-        }
-        client.stop();
+          if (!MQTTclient.connected()) 
+          {
+            MQTTreconnect();
+          }
+          if (MQTTclient.connected()) 
+          {
+            value = doseRate;
+            snprintf (msg, MSG_BUFFER_SIZE, "DoseRate: %fuSv/hr", value);
+            Serial.print("MQTT: ");
+            Serial.println(msg);
+            snprintf (msg, MSG_BUFFER_SIZE, "%f", value);
+            snprintf (topic, MSG_BUFFER_SIZE, "%s/Doserate/uSv_hr", MQTTdeviceID );
+            MQTTclient.publish(topic, msg);
+
+            if (doseLevel == 0)
+            {
+              snprintf (msg, MSG_BUFFER_SIZE, "NORMAL BACKGROUND");
+            }
+            else if (doseLevel == 1)
+            {
+              snprintf (msg, MSG_BUFFER_SIZE, "ELEVATED ACTIVITY");
+            }
+            else if (doseLevel == 2)
+            {
+              snprintf (msg, MSG_BUFFER_SIZE, "HIGH RADIATION LEVEL");
+            }
+            Serial.print("MQTT: DoseLevel: ");
+            Serial.println(msg);
+            snprintf (topic, MSG_BUFFER_SIZE, "%s/Doserate/DoseLevel", MQTTdeviceID );
+            MQTTclient.publish(topic, msg);
+          }
+        } 
       }
     }
   }
@@ -773,6 +1040,10 @@ void loop()
       TS_Point p = ts.getPoint();
       x = map(p.x, TS_MINX, TS_MAXX, 240, 0);
       y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
+              Serial.print("X: ");
+        Serial.println(x);
+        Serial.print("Y: ");
+        Serial.println(y);
 
       if ((x > 4 && x < 62) && (y > 271 && y < 315)) // back button. draw homepage, reset counts and go back
       {
@@ -886,8 +1157,29 @@ void loop()
         {
           EEPROM.write(saveAlertThreshold, alarmThreshold);
           EEPROM.commit(); // save to EEPROM to be retrieved at startup
+
+          if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to thingspeak every 5 minutes
+          {
+            if (WiFi.status() == WL_CONNECTED)
+            {
+              if (!MQTTclient.connected()) 
+              {
+                MQTTreconnect();
+              }
+              if (MQTTclient.connected()) 
+              {
+                snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);
+                snprintf (topic, MSG_BUFFER_SIZE, "%s/System/AlertThreshold", MQTTdeviceID );
+                Serial.print("MQTT: Topic: ");
+                Serial.print(topic);
+                Serial.print(": ");
+                Serial.println(msg);
+                MQTTclient.publish(topic, msg); 
+              }
+            } 
+          }
         }
-        drawSettingsPage();
+      drawSettingsPage();
       }
       else if ((x > 130 && x < 190) && (y > 70 && y < 120))
       {
@@ -925,10 +1217,30 @@ void loop()
       if ((x > 4 && x < 62) && (y > 271 && y < 315))
       {
         page = 1;
-        if (EEPROM.read(saveCalibration) != conversionFactor)
+        if (uint32(EEPROMReadlong(saveCalibration)) != conversionFactor)
         {
-          EEPROM.write(saveCalibration, conversionFactor);
+          EEPROMWritelong(saveCalibration, conversionFactor);
           EEPROM.commit();
+
+          if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads data
+          {
+            if (WiFi.status() == WL_CONNECTED)
+              {
+              if (!MQTTclient.connected()) 
+              {
+                MQTTreconnect();
+              }
+              if (MQTTclient.connected()) 
+              {
+                snprintf (msg, MSG_BUFFER_SIZE, "%i", conversionFactor);
+                Serial.print("MQTT: Topic: ");
+                Serial.print(ConvFactorTopic);
+                Serial.print(": ");
+                Serial.println(msg);
+                MQTTclient.publish(ConvFactorTopic, msg); 
+              }
+            } 
+          }
         }
         drawSettingsPage();
       }
@@ -983,58 +1295,82 @@ void loop()
         tft.setCursor(20, 120);
         tft.println("network \"GC20\" and ");
         tft.setCursor(20, 140);
-        tft.println("browse to 192.168.4.1");
+        tft.println("browse to 192.168.4.1.");
         tft.setCursor(20, 160);
         tft.println("Enter credentials");
         tft.setCursor(20, 180);
         tft.println("of your WiFi network");
         tft.setCursor(20, 200);
-        tft.println("and the Channel ID and");
+        tft.println("and the IP address");
         tft.setCursor(20, 220);
-        tft.println("write API key of your");
+        tft.println("MQTT server and write");
         tft.setCursor(20, 240);
-        tft.println("ThingSpeak channel");
+        tft.println("MQTT device ID");
 
         delay(100);
         WiFiManager wifiManager;
 
-        char channelIDSt[20];
-        char writeAPISt[20];
+        char channelIDSt[20] = {0};
+        char writeAPISt[20] = {0};
+///*
+        for (int k = 52; k < 52 + MQTTserverLength; k++)
+        {
+          channelIDSt[k - 52] = EEPROM.read(k);
+        }
+//        Serial.println("READchannelIDLength: "+ String(MQTTserverLength));
+//        Serial.println("READchannelIDSt: "+ String(channelIDSt));
 
-        WiFiManagerParameter channel_id("0", "Channel ID", channelIDSt, 20); // create custom parameters for setup
+        for (int l = 72; l < 72 + DeviceIDLength; l++)
+        {
+          writeAPISt[l - 72] = EEPROM.read(l);
+        }
+//        Serial.println("READDeviceIDLength: "+ String(DeviceIDLength));
+//        Serial.println("READwriteAPISt: "+ String(writeAPISt));
+//*/
+        WiFiManagerParameter channel_id("0", "MQTT Server IP", channelIDSt, 20); // create custom parameters for setup
         
-        WiFiManagerParameter write_api("1", "Write API", writeAPISt, 20);
+        WiFiManagerParameter write_api("1", "MQTT Device ID", writeAPISt, 20);
         wifiManager.addParameter(&channel_id);
         wifiManager.addParameter(&write_api);
 
-        wifiManager.startConfigPortal("GC20");            // put the esp in AP mode for wifi setup, create a network with name "GC20"
+        wifiManager.startConfigPortal("GC-20M");            // put the esp in AP mode for wifi setup, create a network with name "GC20"
 
         strcpy(channelIDSt, channel_id.getValue());
         strcpy(writeAPISt, write_api.getValue());
+//       Serial.println("channelIDSt: "+ String(channelIDSt));
+//        Serial.println("writeAPISt: "+ String(writeAPISt));
 
         size_t idLen = String(channelIDSt).length();
 
         size_t apiLen = String(writeAPISt).length();
 
-        char channelInit = EEPROM.read(4001);  // first character of channelID is stored in EEPROM address 4001
-        char apiKeyInit = EEPROM.read(4002);   // Only overwrite channelIDSt and writeAPISt if new value of the first character is different from what was saved.
+//       Serial.println("idLen: "+ String(idLen));
+//       Serial.println("apiLen: "+ String(apiLen));
 
+        char channelInit = EEPROM.read(4001);  // first character of channelID is stored in EEPROM address 4001
+//       Serial.println("channelInit: "+ String(channelInit));
+        char apiKeyInit = EEPROM.read(4002);   // Only overwrite channelIDSt and writeAPISt if new value of the first character is different from what was saved.
+//       Serial.println("apiKeyInit: "+ String(apiKeyInit));
         if (channelInit != channelIDSt[0])   
         {
-          for (unsigned int a = 50; a < 50 + idLen; a++)
+          for (unsigned int a = 52; a < 52 + idLen; a++)
           {
-            EEPROM.write((a), channelIDSt[a - 50]);
+            EEPROM.write((a), channelIDSt[a - 52]);
           }
+//          Serial.println("WRITEchannelIDSt: "+ String(channelIDSt));
           EEPROM.write(saveIDLen, idLen);
+//          Serial.println("WRITEidLen: "+ String(idLen));
         }
 
         if(apiKeyInit != writeAPISt[0])
         {
-          for (unsigned int b = 70; b < 70 + apiLen; b++)
+          for (unsigned int b = 72; b < 72 + apiLen; b++)
           {
-            EEPROM.write((b), writeAPISt[b - 70]);
+            EEPROM.write((b), writeAPISt[b - 72]);
           }
+//          Serial.println("WRITEwriteAPISt: "+ String(writeAPISt));
           EEPROM.write(saveAPILen, apiLen);
+//          Serial.println("WRITEapiLen: "+ String(apiLen));
         }
 
         String ssidString = WiFi.SSID();      // retrieve ssid and password form the WifiManager library
@@ -1052,15 +1388,15 @@ void loop()
         ssidString.toCharArray(ssidChar, ssidLen + 1); 
         passwordString.toCharArray(passwordChar, passLen + 1);
 
-        for (unsigned int a = 10; a < 10 + ssidLen; a++)
+        for (unsigned int a = 12; a < 12 + ssidLen; a++)
         {
-          EEPROM.write((a), ssidChar[a - 10]);             // save ssid and ssid length to EEPROM
+          EEPROM.write((a), ssidChar[a - 12]);             // save ssid and ssid length to EEPROM
         }
         EEPROM.write(saveSSIDLen, ssidLen);
         
-        for (unsigned int b = 30; b < 30 + passLen; b++)
+        for (unsigned int b = 32; b < 32 + passLen; b++)
         {    
-          EEPROM.write((b), passwordChar[b - 30]);          // save password and password length to EEPROM
+          EEPROM.write((b), passwordChar[b - 32]);          // save password and password length to EEPROM
         }
         EEPROM.write(savePWLen, passLen);
 
@@ -1078,77 +1414,16 @@ void loop()
       }
       else if ((x > 3 && x < 237) && (y > 162 && y < 206)) // upload data
       {
-        
+      /*  
         drawBlankDialogueBox();
-        tft.setCursor(38, 100);
-        tft.println("Connecting to Wifi..");
-        delay(100);
-        Serial.println(ssid);
-        Serial.println(password);
-
-        WiFi.begin(ssid, password);
-
-        while (WiFi.status() != WL_CONNECTED) {    // Wait for the Wi-Fi to connect
-          delay(100);
-        }
-
-        tft.setCursor(36, 160);
-        tft.println("Creating JSON file..");
-        createJsonFile();                         // reads logged data from EEPROM and creates a json file
-        Serial.println(jsonBuffer);
-        delay(1000);
-        tft.setCursor(70, 220);
-        tft.println("Uploading..");
-        delay(1000);
-
-        char secondHalf[50] = "\",\"updates\":";      
-        strcat(data, channelAPIkey);
-        strcat(data, secondHalf);               
-
-        strcat(data,jsonBuffer);                // concatenate strings together and store in array named data
-        strcat(data,"}");
-
-        Serial.println(data);
-
-        client.stop();
-        String data_length = String(strlen(data)+1);   
         
-        if (client.connect(server, 80)) {          // post data to thingspeak
-          char temp1[100] = "POST /channels/";
-          char temp2[30] = "/bulk_update.json HTTP/1.1";
-          
-          strcat(temp1, channelID);
-          strcat(temp1, temp2);
-
-          client.println(temp1); 
-          client.println("Host: api.thingspeak.com");
-          client.println("User-Agent: mw.doc.bulk-update (Arduino ESP8266)");
-          client.println("Connection: close");
-          client.println("Content-Type: application/json");
-          client.println("Content-Length: "+data_length);
-          client.println();
-          client.println(data);
-          client.stop();
-          
-          WiFi.disconnect();
-          WiFi.mode( WIFI_OFF );                // turn off wifi
-          WiFi.forceSleepBegin();
-          delay(1);
-
           clearLogs();                 // erase logs and re-initialize the json buffer
           tft.setCursor(43, 260);
           tft.println("Resetting Device..");
           delay(1000);
-          ESP.reset();                 
-        }
-        else 
-        {
-          tft.setCursor(50, 260);
-          tft.println("Failed to upload");
-          delay(1000);
-          ESP.reset();
-        }
-        
+          ESP.reset();                         
+       */  
+      delay(1);
       }
       else if ((x > 3 && x < 237) && (y > 114 && y < 158)) // logging 
       {
@@ -1311,7 +1586,7 @@ void loop()
         previousCount = 0;
         for (int a = 0; a < 60; a++)
         {
-          count[a] = 0; // counts need to be reset to prevent errorenous readings
+          count[a] = 0;                    // counts need to be reset to prevent errorenous readings
         }
         for (int b = 0; b < 5; b++)
         {
@@ -1369,15 +1644,13 @@ void loop()
         tft.fillRoundRect(4, 128, 232, 48, 4, 0x2A86);
         tft.setCursor(30, 160);
         tft.println("MON. STATION");
-
       }
     }
   }
-}
-
+}//                                                         void loop()
+//=============================================================================================================================
 void drawHomePage()
 {
-
   tft.fillRect(1, 21, 237, 298, ILI9341_BLACK);
   tft.drawRect(0, 0, tft.width(), tft.height(), ILI9341_WHITE);
 
@@ -1392,7 +1665,7 @@ void drawHomePage()
   tft.setTextColor(ILI9341_CYAN);
   tft.setFont(&FreeSans9pt7b);
   tft.setCursor(2, 16);
-  tft.println("GC-20");
+  tft.println("GC-20M");
   tft.setTextColor(ILI9341_WHITE);
   
   tft.setFont();
@@ -1411,6 +1684,7 @@ void drawHomePage()
   tft.println("EFFECTIVE DOSE RATE:");
   tft.setCursor(165, 85);
   tft.setFont(&FreeSans12pt7b);
+  
   if (doseUnits == 0)
   {
     tft.println("uSv/hr");
@@ -1438,6 +1712,7 @@ void drawHomePage()
   tft.println("CUMULATIVE DOSE");
   tft.setCursor(7, 205);
   tft.println("Counts:");
+  
   if (doseUnits == 0)
   {
     tft.setCursor(34, 235);
@@ -1495,6 +1770,7 @@ void drawHomePage()
     tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
     tft.drawBitmap(190, 153, ledOffBitmap, 45, 45, ILI9341_WHITE);
   }
+  
   if (buzzerSwitch)
   {
     tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
@@ -1505,7 +1781,21 @@ void drawHomePage()
     tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
     tft.drawBitmap(190, 208, buzzerOffBitmap, 45, 45, ILI9341_WHITE);
   }
+
   tft.setFont(&FreeSans9pt7b);
+
+  if (MQTTclient.connected())
+  {
+  //  tft.setTextSize(1);
+  //  tft.setFont(&FreeSans9pt7b);
+    tft.setCursor(157, 16);
+    tft.println("M");
+  }
+  else
+  {
+    tft.fillRect(157, 2, 18, 18, ILI9341_BLACK);
+  }
+
   if (isLogging)
   {
     tft.setCursor(175, 16);
@@ -1525,13 +1815,15 @@ void drawHomePage()
     tft.fillRect(188, 1, 19, 19, ILI9341_BLACK);
   }
 }
-
+//                                                         void drawHomePage()
+//=============================================================================================================================
 void drawSettingsPage()
 {
   digitalWrite(D3, LOW);
   digitalWrite(D0, LOW);
 
   drawFrame();
+  drawBackButton();
 
   tft.fillRoundRect(3, 23, 234, 35, 3, 0x3B8F);
   tft.setFont(&FreeSans12pt7b);
@@ -1558,21 +1850,18 @@ void drawSettingsPage()
   tft.drawRoundRect(3, 214, 234, 44, 4, WHITE);
   tft.setCursor(8, 244);
   tft.println("LOGGING AND WIFI");
-
-  drawBackButton();
 }
-
+//=============================================================================================================================
 void drawUnitsPage()
 {
   drawFrame();
+  drawBackButton();
 
   tft.fillRoundRect(3, 23, 234, 40, 3, 0x3B8F);
   tft.setFont(&FreeSans12pt7b);
   tft.setCursor(84, 51);
   tft.println("UNITS");
   tft.drawFastHLine(86, 55, 71, WHITE);
-
-  drawBackButton();
 
   tft.drawRoundRect(3, 70, 234, 50, 4, WHITE);
   if (doseUnits == 0)
@@ -1586,18 +1875,17 @@ void drawUnitsPage()
   tft.setCursor(47, 160);
   tft.println("Rems (mR/hr)");
 }
-
+//=============================================================================================================================
 void drawAlertPage()
 {
   drawFrame();
+  drawBackButton();
 
   tft.fillRoundRect(3, 23, 234, 40, 3, 0x3B8F);
   tft.setFont(&FreeSans12pt7b);
   tft.setCursor(4, 51);
   tft.println("ALERT THRESHOLD");
   tft.drawFastHLine(5, 55, 229, WHITE);
-
-  drawBackButton();
   
   tft.setCursor(30, 164);
   tft.println("uSv/hr:");
@@ -1614,18 +1902,17 @@ void drawAlertPage()
   tft.println("-");
   tft.setTextSize(1);
 }
-
+//=============================================================================================================================
 void drawCalibrationPage()
 {
   drawFrame();
+  drawBackButton();
 
   tft.fillRoundRect(3, 23, 234, 40, 3, 0x3B8F);
   tft.setFont(&FreeSans12pt7b);
   tft.setCursor(47, 51);
   tft.println("CALIBRATE");
   tft.drawFastHLine(48, 55, 133, WHITE);
-
-  drawBackButton();
 
   tft.setFont(&FreeSans9pt7b);
   tft.setCursor(8, 154);
@@ -1646,11 +1933,10 @@ void drawCalibrationPage()
   tft.println("-");
   tft.setTextSize(1);
 }
-
+//=============================================================================================================================
 void drawWifiPage()
 {
   drawFrame();
-
   drawBackButton();
 
   tft.fillRoundRect(3, 23, 234, 35, 3, 0x3B8F);
@@ -1696,11 +1982,10 @@ void drawWifiPage()
     tft.println("Log memory full"); 
   }
 }
-
+//=============================================================================================================================
 void drawTimedCountPage()
 {
   drawFrame();
-
   drawBackButton();
 
   tft.fillRoundRect(145, 271, 92, 45, 3, 0x3B8F);
@@ -1733,13 +2018,11 @@ void drawTimedCountPage()
 
   cpm = 0;
   progress = 0;
-
 }
-
+//=============================================================================================================================
 void drawTimedCountRunningPage(int duration, int size)
 {
   drawFrame();
-
   drawCancelButton();
 
   tft.fillRoundRect(3, 23, 234, 40, 3, 0x3B8F);
@@ -1771,18 +2054,17 @@ void drawTimedCountRunningPage(int duration, int size)
   intervalMillis = duration * 60000;
   completed = 0;
 }
-
+//=============================================================================================================================
 void drawDeviceModePage()
 {
   drawFrame();
+  drawBackButton();
 
   tft.fillRoundRect(3, 23, 234, 40, 3, 0x3B8F);
   tft.setFont(&FreeSans12pt7b);
   tft.setCursor(34, 51);
   tft.println("DEVICE MODE");
   tft.drawFastHLine(35, 57, 160, WHITE);
-
-  drawBackButton();
 
   tft.drawRoundRect(3, 70, 234, 50, 4, WHITE);
   if (deviceMode == 0)
@@ -1804,22 +2086,24 @@ void drawDeviceModePage()
   tft.setCursor(20, 240);
   tft.println("to take effect");
 }
-
-void isr() // interrupt service routine
+//=============================================================================================================================
+void IRAM_ATTR isr() // interrupt service routine
 {
-  if ((micros() - 200) > previousIntMicros){
+  if ((micros() - 200) > previousIntMicros)
+  {
     currentCount++;
     cumulativeCount++;
   }
   previousIntMicros = micros();
 }
-
-void drawBackButton(){
+//=============================================================================================================================
+void drawBackButton()
+{
   tft.fillRoundRect(4, 271, 62, 45, 3, 0x3B8F);
   tft.drawRoundRect(4, 271, 62, 45, 3, ILI9341_WHITE);
   tft.drawBitmap(4, 271, backBitmap, 62, 45, ILI9341_WHITE);
 }
-
+//=============================================================================================================================
 void drawFrame(){
   tft.fillRect(2, 21, 236, 298, ILI9341_BLACK);
   tft.drawRect(0, 0, tft.width(), tft.height(), ILI9341_WHITE);
@@ -1835,7 +2119,7 @@ void drawFrame(){
   tft.setTextColor(ILI9341_CYAN);
   
   tft.setTextSize(1);
-  tft.println("GC-20");
+  tft.println("GC-20M");
   tft.setTextColor(ILI9341_WHITE);
 
   tft.setFont();
@@ -1850,6 +2134,19 @@ void drawFrame(){
 
   tft.drawLine(1, 20, 238, 20, ILI9341_WHITE);
   tft.setFont(&FreeSans9pt7b);
+
+  if (MQTTclient.connected())
+  {
+  //  tft.setTextSize(1);
+  //  tft.setFont(&FreeSans9pt7b);
+    tft.setCursor(157, 16);
+    tft.println("M");
+  }
+  else
+  {
+    tft.fillRect(157, 2, 18, 18, ILI9341_BLACK);
+  }
+
   if (isLogging)
   {
     tft.setCursor(175, 16);
@@ -1868,8 +2165,8 @@ void drawFrame(){
   {
     tft.fillRect(188, 1, 19, 19, ILI9341_BLACK);
   }
-}
-
+}//                                                          void drawFrame()
+//=============================================================================================================================
 void drawCancelButton()
 {
   tft.fillRoundRect(70, 271, 100, 45, 3, 0xB9C7);
@@ -1878,7 +2175,7 @@ void drawCancelButton()
   tft.setCursor(72, 302);
   tft.println("CANCEL");
 }
-
+//=============================================================================================================================
 void drawCloseButton()
 {
   tft.fillRoundRect(70, 271, 100, 45, 3, 0x3B8F);
@@ -1888,8 +2185,9 @@ void drawCloseButton()
   tft.setCursor(79, 302);
   tft.println("CLOSE");
 }
-
-long EEPROMReadlong(long address) {
+//=============================================================================================================================
+long EEPROMReadlong(long address) 
+{ 
   long four = EEPROM.read(address);
   long three = EEPROM.read(address + 1);
   long two = EEPROM.read(address + 2);
@@ -1897,8 +2195,9 @@ long EEPROMReadlong(long address) {
  
   return ((four << 0) & 0xFF) + ((three << 8) & 0xFFFF) + ((two << 16) & 0xFFFFFF) + ((one << 24) & 0xFFFFFFFF);
 }
-
-void EEPROMWritelong(int address, long value) {
+//=============================================================================================================================
+void EEPROMWritelong(int address, long value) 
+{
   byte four = (value & 0xFF);
   byte three = ((value >> 8) & 0xFF);
   byte two = ((value >> 16) & 0xFF);
@@ -1909,45 +2208,15 @@ void EEPROMWritelong(int address, long value) {
   EEPROM.write(address + 2, two);
   EEPROM.write(address + 3, one);
 }
-
-void createJsonFile()
-{
-  Serial.println(addr);
-  for (int i = 100; i < addr; i += 4)
-  {
-    int count = EEPROMReadlong(i);
-
-    int deltaT = 600;
-    strcat(jsonBuffer,"{\"delta_t\":");
-    size_t lengthT = String(deltaT).length();
-    char temp[10];
-    String(deltaT).toCharArray(temp,lengthT + 1);
-    strcat(jsonBuffer,temp);
-    strcat(jsonBuffer,",");
-
-    strcat(jsonBuffer, "\"field1\":");
-    lengthT = String(count).length();
-    String(count).toCharArray(temp, lengthT + 1);
-
-    strcat(jsonBuffer,temp);
-    strcat(jsonBuffer,"},");
-
-  }
-  size_t len = strlen(jsonBuffer);
-  jsonBuffer[len-1] = ']';
-
-}
-
+//=============================================================================================================================
 void drawBlankDialogueBox()
 {
   tft.setFont(&FreeSans9pt7b);
   tft.setTextSize(1);
-
   tft.fillRoundRect(20, 50, 200, 220, 6, ILI9341_BLACK);
   tft.drawRoundRect(20, 50, 200, 220, 6, ILI9341_WHITE);
-
 }
-
+//=============================================================================================================================
 void clearLogs()
 {
   for (int j = 100; j < 4000; j ++)
