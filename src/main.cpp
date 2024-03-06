@@ -23,10 +23,15 @@
 #define CS_PIN D2
 XPT2046_Touchscreen ts(CS_PIN);
 
-#define TS_MINX 250
-#define TS_MINY 200 // calibration points for touchscreen
-#define TS_MAXX 3800
-#define TS_MAXY 3750
+//#define TS_MINX 250
+//#define TS_MINY 200 // calibration points for touchscreen
+//#define TS_MAXX 3800
+//#define TS_MAXY 3750
+
+#define TS_MINX 450
+#define TS_MINY 350 // calibration points for touchscreen
+#define TS_MAXX 3300
+#define TS_MAXY 3700
 
 #define TFT_DC D4
 #define TFT_CS D8
@@ -125,7 +130,7 @@ const int saveAPILen = 11;
 // Data Logging variables
 int addr = 200;                 // starting address for data logging
 char jsonBuffer[14000] = "["; 
-char data[14500] = "{\"write_api_key\":\"";
+//char data[14500] = "{\"write_api_key\":\"";
 unsigned long currentLogTime;
 unsigned long previousLogTime;
 
@@ -148,8 +153,8 @@ bool deviceMode;
 // PubSubClient variables
 const char* mqtt_server = "10.73.12.1";  // Имя сервера MQTT
 const int mqtt_port = 1883;              // Порт для подключения к серверу MQTT
-const char *mqtt_user = "";
-const char *mqtt_pass = "";
+const char *mqtt_user = "hamqtt";
+const char *mqtt_pass = "hamqtt";
 
 //String subscr_topic = "EspDosimeter/Control/";
 //String prefix = "EspDosimeter/";
@@ -354,11 +359,11 @@ void MQTTreconnect()
   {   
     Serial.print("Attempting MQTT connection...");
     String clientId = "ESP_Dosimeter";
-    if (MQTTclient.connect(clientId.c_str()))                  // Attempt to connect
+    if (MQTTclient.connect(clientId.c_str(), mqtt_user, mqtt_pass))                  // Attempt to connect
     {                                                          
       Serial.println("connected");
-      MQTTclient.subscribe(buzzertopic);                       // ... and resubscribe
-      MQTTclient.subscribe(lighttopic);                       // ... and resubscribe
+//      MQTTclient.subscribe(buzzertopic);                       // ... and resubscribe
+//      MQTTclient.subscribe(lighttopic);                       // ... and resubscribe
       MQTTclient.subscribe(ConvFactorTopic);                       // ... and resubscribe
       MQTTclient.publish(iptopic, (WiFi.localIP().toString().c_str()));
     } 
@@ -778,7 +783,8 @@ MQTTclient.loop();
           tft.setFont(&FreeSans9pt7b);
           tft.setTextColor(ILI9341_WHITE);
           tft.setTextSize(1);
-          tft.println("NORMAL BACKGROUND");
+          //tft.println("NORMAL BACKGROUND");
+          tft.println("Фон в норме");
 
           previousDoseLevel = doseLevel;
         }
@@ -836,7 +842,11 @@ MQTTclient.loop();
        // Serial.print("P: ");
        // Serial.println(p);
       x = map(p.x, TS_MINX, TS_MAXX, 240, 0); // get touch point and map to screen pixels
+//      Serial.print("Px: ");
+//      Serial.println(p.x);
       y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
+//      Serial.print("Py: ");
+//      Serial.println(p.y);
         Serial.print("X: ");
         Serial.println(x);
         Serial.print("Y: ");
@@ -1700,6 +1710,7 @@ void drawHomePage()
   tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(1);
   tft.println("NORMAL BACKGROUND");
+  //tft.println("Фон в норме"); ====================================Тут прикол!!!!!!!!!!!!!====================================
 
   tft.setFont(&FreeSans12pt7b);
   tft.setCursor(7, 141);
