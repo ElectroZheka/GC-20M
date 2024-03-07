@@ -1,7 +1,8 @@
 /*  SBM-20 based Geiger Counter
     Author: Prabhat    Email: pra22@pitt.edu
-    Sketch for ESP8266 that counts clicks from the Geiger tube, calculates the counts per minute, and displays information 
-    on a TFT touchscreen.
+    Author: ElectroZheka
+    Sketch for ESP8266 that counts clicks from the Geiger tube, calculates the counts per minute, displays information 
+    on a TFT touchscreen and send data to MQTT server.
     Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
 */
 #include <Arduino.h>
@@ -19,11 +20,10 @@
 #include <Wire.h>
 #include <PubSubClient.h>
 #include "settings/settings.h"
-//#include "FontsRus/FreeSans9.h"
-//#include "FontsRus/FreeSans12.h"
+//#include "FontsRus/FreeSans9pt7b.h"
+//#include "FontsRus/FreeSans12pt7b.h"
 
-XPT2046_Touchscreen ts(CS_PIN);
-
+//=============================================================================================================================
 // WiFi variables
 unsigned long currentUploadTime;
 unsigned long previousUploadTime;
@@ -33,97 +33,18 @@ int MQTTserverLength;
 int DeviceIDLength;
 char ssid[20];
 char password[20];
- 
-//char MQTTserverIP[20];           // 
-char MQTTserverIP[15];           // = "192.168.1.1";
-char MQTTdeviceID[20];           // = "Esp_Dosimeter"; 
-//char MQTTuser[20];             //  
-//char MQTTpass[20];             // = "Esp_Dosimeter";
-
-int attempts; // number of connection attempts when device starts up in monitoring mode
-int MQTTattempts; // number of MQTT connection attempts when device starts up in monitoring mode
 WiFiClient client;
+//=============================================================================================================================
+// MQTT variables
+char MQTTserverIP[15];                      // = "192.168.1.1";
+char MQTTdeviceID[20];                      // = "Esp_Dosimeter"; 
+//char MQTTuser[20];                        //  
+//char MQTTpass[20];                        // = "Esp_Dosimeter";
 
-Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
-
-const int interruptPin = 5;
-
-long count[61];
-long fastCount[6]; // arrays to store running counts
-long slowCount[181];
-int i = 0;         // array elements
-int j = 0;
-int k = 0;
-
-int page = 0;
-
-long currentMillis;
-long previousMillis;
-unsigned long currentMicros;
-unsigned long previousMicros;
-
-unsigned long averageCount;
-unsigned long currentCount;  // incremented by interrupt
-unsigned long previousCount; // to activate buzzer and LED
-unsigned long cumulativeCount;
-float doseRate;
-float totalDose;
-char dose[5];
-int doseLevel;               // determines home screen warning signs
-int previousDoseLevel;
-
-bool ledSwitch = 1;
-bool buzzerSwitch = 1;
-bool wasTouched;
-int integrationMode = 0;             // 0 = medium, 1 = fast, 2 == slow;
-
-bool doseUnits = 0;                  // 0 = Sievert, 1 = Rem
-unsigned int alarmThreshold = 5;
-unsigned int conversionFactor = 700; //175;
-
-int x, y; // touch points
-
-// Battery indicator variables
-int batteryInput;
-int batteryPercent;
-int batteryMapped = 212;       // pixel location of battery icon
-int batteryUpdateCounter = 29;
-
-// EEPROM variables
-const int saveUnits = 0;
-const int saveAlertThreshold = 1; // Addresses for storing settings data in the EEPROM
-const int saveCalibration = 2;
-/*const int saveDeviceMode = 3;
-const int saveLoggingMode = 4;
-const int saveSSIDLen = 5;
-const int savePWLen = 6;
-const int saveIDLen = 7;
-const int saveAPILen = 8; */
-const int saveDeviceMode = 6;
-const int saveLoggingMode = 7;
-const int saveSSIDLen = 8;
-const int savePWLen = 9;
-const int saveIDLen = 10;
-const int saveAPILen = 11;
-
-// Timed Count Variables:
-int interval = 5;
-unsigned long intervalMillis;
-unsigned long startMillis;
-unsigned long elapsedTime;
-int progress;
-float cpm;
-bool completed = 0;
-int intervalSize; // stores how many digits are in the interval
-
-// Logging variables
-bool isLogging;
-
-bool deviceMode;
-
+int attempts;                               // number of connection attempts when device starts up in monitoring mode
+int MQTTattempts;                           // number of MQTT connection attempts when device starts up in monitoring mode
 // PubSubClient variables
-//const char* mqtt_server = "192.168.1.1";  // Имя сервера MQTT
-const int mqtt_port = 1883;              // Порт для подключения к серверу MQTT
+const int mqtt_port = 1883;                 // Порт для подключения к серверу MQTT
 const char *mqtt_user = "hamqtt";
 const char *mqtt_pass = "hamqtt";
 
@@ -141,26 +62,105 @@ char lighttopic[MSG_BUFFER_SIZE];
 char iptopic[MSG_BUFFER_SIZE];
 char batterytopic[MSG_BUFFER_SIZE];
 char ConvFactorTopic[MSG_BUFFER_SIZE];
+char IntTimeTopic[MSG_BUFFER_SIZE];
 float value = 0;
+//=============================================================================================================================
+// Display variable
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 
+long count[61];
+long fastCount[6];                   // arrays to store running counts
+long slowCount[181];
+int i = 0;                           // array elements
+int j = 0;
+int k = 0;
+
+int page = 0;
+//=============================================================================================================================
+// Configuratin variable
+long currentMillis;                  // Секундный таймер
+long previousMillis;                 // Секундный таймер
+unsigned long currentMicros;         // Таймер одновибратора
+unsigned long previousMicros;        // Таймер одновибратора
+bool deviceMode;
+bool ledSwitch = 1;
+bool buzzerSwitch = 1;
+int integrationMode = 0;             // 0 = medium, 1 = fast, 2 == slow;
+unsigned int alarmThreshold = 5;
+//=============================================================================================================================
+// Geiger counter variable
+unsigned long averageCount;
+unsigned long currentCount;          // incremented by interrupt
+unsigned long previousCount;         // to activate buzzer and LED
+unsigned long cumulativeCount;
+float doseRate;
+float totalDose;
+char dose[5];
+int doseLevel;                       // determines home screen warning signs
+int previousDoseLevel;
+bool doseUnits = 0;                  // 0 = Sievert, 1 = Rem
+unsigned int conversionFactor = 575; //175;
+//=============================================================================================================================
+// Touchscreen variable
+XPT2046_Touchscreen ts(CS_PIN);
+bool wasTouched;
+int x, y;                           // touch points
+//=============================================================================================================================
+// Battery indicator variables
+int batteryInput;
+int batteryPercent;
+int batteryMapped = 212;            // pixel location of battery icon
+int batteryUpdateCounter = 29;
+//=============================================================================================================================
+// EEPROM variables
+const int saveUnits = 0;
+const int saveAlertThreshold = 1;   // Addresses for storing settings data in the EEPROM
+const int saveCalibration = 2;
+/*const int saveDeviceMode = 3;
+const int saveLoggingMode = 4;
+const int saveSSIDLen = 5;
+const int savePWLen = 6;
+const int saveIDLen = 7;
+const int saveAPILen = 8; */
+const int saveDeviceMode = 6;
+const int saveLoggingMode = 7;
+const int saveSSIDLen = 8;
+const int savePWLen = 9;
+const int saveIDLen = 10;
+const int saveAPILen = 11;
+//=============================================================================================================================
+// Timed Count Variables:
+int interval = 5;
+unsigned long intervalMillis;
+unsigned long startMillis;
+unsigned long elapsedTime;
+int progress;
+float cpm;
+bool completed = 0;
+int intervalSize;                    // stores how many digits are in the interval
+//=============================================================================================================================
+// Logging variables
+bool isLogging;
+//=============================================================================================================================
 // interrupt routine declaration
-void isr();
-
+const int interruptPin = 5;
 unsigned int previousIntMicros;              // timers to limit count increment rate in the ISR
-
-#include "grafic/grafic.h"
+void isr();
+//=============================================================================================================================
+#include "graphic/graphic.h"
 #include "EEPROM/EEPROM.h"
-
-String utf8rus(String source);
-void drawHomePage();              // page 0
-void drawSettingsPage();          // page 1
-void drawUnitsPage();             // page 2
-void drawAlertPage();             // page 3
-void drawCalibrationPage();       // page 4
-void drawWifiPage();              // page 5
-void drawTimedCountPage();        // page 6
-void drawTimedCountRunningPage(int duration, int size); // page 7 
-void drawDeviceModePage();        // page 8
+#include "mqtt/mqtt.h"
+//=============================================================================================================================
+// SubRoutine
+void drawHomePage();                                      // page 0
+void drawSettingsPage();                                  // page 1
+void drawUnitsPage();                                     // page 2
+void drawAlertPage();                                     // page 3
+void drawCalibrationPage();                               // page 4
+void drawWifiPage();                                      // page 5
+void drawTimedCountPage();                                // page 6
+void drawTimedCountRunningPage(int duration, int size);   // page 7 
+void drawDeviceModePage();                                // page 8
 
 void drawFrame();
 void drawBackButton();
@@ -168,17 +168,20 @@ void drawCancelButton();
 void drawCloseButton();
 void drawBlankDialogueBox();
 
-long EEPROMReadlong(long address);
-void EEPROMWritelong(int address, long value); // logging functions
-
+long EEPROMReadlong(long address);                        // EEPRON Read
+void EEPROMWritelong(int address, long value);            // EEPRON Write
 //=============================================================================================================================
-#include "mqtt/mqtt.h"
 //=============================================================================================================================
 void setup()
 {
+  pinMode(D0, OUTPUT); // buzzer switch
+  pinMode(D3, OUTPUT); // LED
+  digitalWrite(D3, LOW);
+  digitalWrite(D0, LOW);
+  
   Serial.begin(115200);
 
-  delay(1000);
+  delay(500);
 
   #if DEBUG_MODE
     Serial.println(" ");
@@ -187,22 +190,15 @@ void setup()
     Serial.println("GC-20M Starting...");
   #endif
 
-//  ts.begin();
-//  ts.setRotation(0);
+  tft.begin();
+  tft.setRotation(0);
 
   tft.begin();
   tft.setRotation(2);
   tft.fillScreen(ILI9341_BLACK);
 
-//  tft.cp437(true);
-
-  pinMode(D0, OUTPUT); // buzzer switch
-  pinMode(D3, OUTPUT); // LED
-  digitalWrite(D3, LOW);
-  digitalWrite(D0, LOW);
-
   //EEPROM.begin(4096);   // initialize emulated EEPROM sector with 4 kb
-  EEPROM.begin(128);   // initialize emulated EEPROM sector with 4 kb
+  EEPROM.begin(128);   // initialize emulated EEPROM sector 128 byte
 
   #if DEBUG_MODE && DEBUG_EEPROM
     Serial.println("Reading contants from EEPROM...");
@@ -218,8 +214,6 @@ void setup()
   MQTTserverLength = EEPROM.read(saveIDLen);                         //Address = 10
   DeviceIDLength = EEPROM.read(saveAPILen);                          //Address = 11
 
-//  addr = EEPROMReadlong(96);
-  
   for (int i = 12; i < 12 + SSIDLength; i++)
   {
     ssid[i - 12] = EEPROM.read(i);
@@ -258,6 +252,7 @@ void setup()
   snprintf (iptopic, MSG_BUFFER_SIZE, "%s/System/IP", MQTTdeviceID );
   snprintf (batterytopic, MSG_BUFFER_SIZE, "%s/System/Battery", MQTTdeviceID );
   snprintf (ConvFactorTopic, MSG_BUFFER_SIZE, "%s/System/ConversionFactor", MQTTdeviceID );
+  snprintf (IntTimeTopic, MSG_BUFFER_SIZE, "%s/System/Integration_Time", MQTTdeviceID );
 
   attachInterrupt(interruptPin, isr, FALLING);
 
@@ -265,12 +260,10 @@ void setup()
 
   if (!deviceMode)
   {
-
     #if DEBUG_MODE
       Serial.println("CG-20M in Portable Dosimeter Mode.");
     #endif
-
-    WiFi.mode( WIFI_OFF );                // turn off wifi
+    WiFi.mode( WIFI_OFF );                                     // turn off wifi
     WiFi.forceSleepBegin();
     delay(1);
   }
@@ -278,6 +271,7 @@ void setup()
   {
     #if DEBUG_MODE
       Serial.println("CG-20M in Monitoring Station Mode.");
+      Serial.print("Connecting to WiFi.. ");
     #endif
 
     WiFi.mode(WIFI_STA);
@@ -286,13 +280,8 @@ void setup()
     tft.setTextSize(1);
     tft.setFont(&FreeSans9pt7b);
     tft.setTextColor(ILI9341_WHITE);
-    
     tft.setCursor(38, 120);
     tft.println("Connecting to WiFi..");
-
-    #if DEBUG_MODE && DEBUG_WiFi
-      Serial.print("Connecting to WiFi.. ");
-    #endif
 
     while ((WiFi.status() != WL_CONNECTED) && (attempts < 100))
     {
@@ -301,44 +290,32 @@ void setup()
     }
     if (attempts >= 100)
     {
-      deviceMode = 0; 
-      tft.setCursor(45, 160);
-      tft.println("Failed to connect.");
-
       #if DEBUG_MODE && DEBUG_WiFi
         Serial.println("Failed to connect.");
       #endif
-
+      deviceMode = 0; 
+      tft.setCursor(45, 160);
+      tft.println("Failed to connect.");
       delay(1000);
     }
     else
     {
-      tft.setCursor(68, 160);
-      tft.println("Connected!");
-
       #if DEBUG_MODE && DEBUG_WiFi
         Serial.println("Connected!");
+        Serial.print("Local IP: ");
+        Serial.println(WiFi.localIP()); 
       #endif
-
+      tft.setCursor(68, 160);
+      tft.println("Connected!");
       tft.setCursor(55, 200);
       tft.println("IP:"); 
       tft.setCursor(78, 200);
       tft.println(WiFi.localIP());
 
-      #if DEBUG_MODE && DEBUG_WiFi
-        Serial.print("Local IP: ");
-        Serial.println(WiFi.localIP());  
-      #endif         
-
       delay(1500);
 
-      //MQTTclient.setSocketTimeout(70);
-      //MQTTclient.setKeepAlive(70);
-
-      //MQTTclient.setServer(mqtt_server, mqtt_port);
       MQTTclient.setServer(MQTTserverIP, mqtt_port);
       MQTTclient.setCallback(callback);
-      
       MQTTreconnect();
     }
     drawHomePage();
@@ -360,7 +337,9 @@ MQTTclient.loop();
 
       if (batteryUpdateCounter == 30){         // update battery level every 30 seconds. Prevents random fluctations of battery level.
 
-        batteryInput = analogRead(A0);
+        batteryUpdateCounter = 0;
+
+        batteryInput = analogRead(BATT_PIN);
         batteryInput = constrain(batteryInput, 590, 800);
         batteryPercent = map(batteryInput, 590, 800, 0, 100);
         batteryMapped = map(batteryPercent, 100, 0, 212, 233);
@@ -374,8 +353,6 @@ MQTTclient.loop();
         {
           tft.fillRect(batteryMapped, 6, (234 - batteryMapped), 10, ILI9341_GREEN); // draws battery icon
         }
-        
-        batteryUpdateCounter = 0;
 
         #if DEBUG_MODE && DEBUG_BATT
 //          Serial.println("BATT: ADC: " + String(batteryInput));
@@ -400,7 +377,7 @@ MQTTclient.loop();
 
       count[i] = currentCount;
       i++;
-      fastCount[j] = currentCount; // keep concurrent arrays of counts. Use only one depending on user choice
+      fastCount[j] = currentCount;    // keep concurrent arrays of counts. Use only one depending on user choice
       j++;
       slowCount[k] = currentCount;
       k++;
@@ -432,7 +409,7 @@ MQTTclient.loop();
 
       else if (integrationMode == 0)
       {
-        averageCount = currentCount - count[i]; // count[i] stores the value from 60 seconds ago
+        averageCount = currentCount - count[i];                              // count[i] stores the value from 60 seconds ago
       }
 
       averageCount = ((averageCount) / (1 - 0.00000333 * float(averageCount))); // accounts for dead time of the geiger tube. relevant at high count rates
@@ -448,8 +425,8 @@ MQTTclient.loop();
         totalDose = cumulativeCount / (60 * float(conversionFactor * 10.0)); // 1 mRem == 10 uSv
       }
 
-      if (averageCount < conversionFactor/2) // 0.5 uSv/hr
-        doseLevel = 0; // determines alert level displayed on homescreen
+      if (averageCount < conversionFactor/2)                                 // 0.5 uSv/hr
+        doseLevel = 0;                                                       // determines alert level displayed on homescreen
       else if (averageCount < alarmThreshold * conversionFactor)
         doseLevel = 1;
       else
@@ -457,36 +434,36 @@ MQTTclient.loop();
 
       if (doseRate < 10.0)
       {
-        dtostrf(doseRate, 4, 2, dose); // display two digits after the decimal point if value is less than 10
+        dtostrf(doseRate, 4, 2, dose);                          // display two digits after the decimal point if value is less than 10
       }
       else if ((doseRate >= 10) && (doseRate < 100))
       {
-        dtostrf(doseRate, 4, 1, dose); // display one digit after decimal point when dose is greater than 10
+        dtostrf(doseRate, 4, 1, dose);                          // display one digit after decimal point when dose is greater than 10
       }
       else if ((doseRate >= 100))
       {
-        dtostrf(doseRate, 4, 0, dose); // whole numbers only when dose is higher than 100
+        dtostrf(doseRate, 4, 0, dose);                          // whole numbers only when dose is higher than 100
       }
       else {
-        dtostrf(doseRate, 4, 0, dose);  // covers the rare edge case where the dose rate is sometimes errorenously calculated to be negative
+        dtostrf(doseRate, 4, 0, dose);                          // covers the rare edge case where the dose rate is sometimes errorenously calculated to be negative
       }
       
       tft.setFont();
       tft.setCursor(44, 52);
       tft.setTextSize(5);
       tft.setTextColor(ILI9341_WHITE, DOSEBACKGROUND);
-      tft.println(dose); // display effective dose rate
-      tft.setTextSize(1);
+      tft.println(dose);                                        // display effective dose rate
+//      tft.setTextSize(1);
 
       tft.setFont();
       tft.setCursor(73, 122);
       tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
       tft.setTextSize(3);
-      tft.println(averageCount); // Display CPM
+      tft.println(averageCount);                                // Display CPM
 
       if (averageCount < 10)
       {
-        tft.fillRect(90, 120, 144, 25, ILI9341_BLACK); // erase numbers that may have been left from previous high readings
+        tft.fillRect(90, 120, 144, 25, ILI9341_BLACK);          // erase numbers that may have been left from previous high readings
       }
       else if (averageCount < 100)
       {
@@ -507,12 +484,12 @@ MQTTclient.loop();
       tft.setCursor(80, 192);
       tft.setTextSize(2);
       tft.setTextColor(ILI9341_WHITE, 0x630C);
-      tft.println(cumulativeCount); // display total counts since reset
+      tft.println(cumulativeCount);                             // display total counts since reset
 
       tft.setCursor(80, 222);
-      tft.println(totalDose); // display cumulative dose
+      tft.println(totalDose);                                   // display cumulative dose
 
-      if (doseLevel != previousDoseLevel) // only update alert level if it changed. This prevents flicker
+      if (doseLevel != previousDoseLevel)                       // only update alert level if it changed. This prevents flicker
       {
         if (doseLevel == 0)
         {
@@ -525,7 +502,7 @@ MQTTclient.loop();
           tft.println("NORMAL BACKGROUND");
           //tft.println("Фон в норме");
 
-          previousDoseLevel = doseLevel;
+         // previousDoseLevel = doseLevel;
         }
         else if (doseLevel == 1)
         {
@@ -537,7 +514,7 @@ MQTTclient.loop();
           tft.setTextSize(1);
           tft.println("ELEVATED ACTIVITY");
 
-          previousDoseLevel = doseLevel;
+          //previousDoseLevel = doseLevel;
         }
         else if (doseLevel == 2)
         {
@@ -549,29 +526,40 @@ MQTTclient.loop();
           tft.setTextSize(1);
           tft.println("HIGH RADIATION LEVEL");
 
-          previousDoseLevel = doseLevel;
+          //previousDoseLevel = doseLevel;
         }
+        previousDoseLevel = doseLevel;
       }
       //Serial.println(currentCount);
     } 
     // end of millis()-controlled block that runs once every second. The rest of the code on page 0 runs every loop
-    if (currentCount > previousCount)
+//----------------------------------------------------------------------------------
+// Buzzer and LED reaction on Geiger event
+    if (currentCount > previousCount)      // Если счётчиком зафиксирована новая частица
     {
       if (ledSwitch)
-        digitalWrite(D3, HIGH); // trigger buzzer and led if they are activated
-      if (buzzerSwitch)
+      {
+        //digitalWrite(D3, LOW);             // LED off
+        digitalWrite(D3, HIGH);            // trigger buzzer and led if they are activated
+      } 
+      if (buzzerSwitch){
+        digitalWrite(D0, LOW);             // Buzzer off
+        delay(1);
         digitalWrite(D0, HIGH);
+      }  
       previousCount = currentCount;
-      previousMicros = micros();
-    }
-    currentMicros = micros();
-    if (currentMicros - previousMicros >= 200)
-    {
-      digitalWrite(D3, LOW);
-      digitalWrite(D0, LOW);
-      previousMicros = currentMicros;
+      previousMicros = micros();           // Начинаем отсчёт одновибратора
     }
 
+    currentMicros = micros();
+
+    if (currentMicros - previousMicros >= 200)
+    {
+      digitalWrite(D3, LOW);               // LED off
+      digitalWrite(D0, LOW);               // Buzzer off
+      previousMicros = currentMicros;      // 
+    }
+//---------------------------------------------------------------------------------
     if (!ts.touched())
       wasTouched = 0;
     if (ts.touched() && !wasTouched) // A way of "debouncing" the touchscreen. Prevents multiple inputs from single touch
@@ -659,14 +647,15 @@ MQTTclient.loop();
               {
                 value = 180;
               }
-              snprintf (msg, MSG_BUFFER_SIZE, "Integration Time: %f sec", value);
-              Serial.print("MQTT: Topic: ");
-              Serial.print(topic);
-              Serial.print(": ");
-              Serial.println(msg);
+
+              #if DEBUG_MODE && DEBUG_MQTT
+                Serial.print("MQTT: Topic: ");
+                Serial.print(IntTimeTopic);                                                        //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                Serial.print(": ");
+                Serial.println(value);
+              #endif
               snprintf (msg, MSG_BUFFER_SIZE, "%f", value);
-              snprintf (topic, MSG_BUFFER_SIZE, "%s/System/Integration_Time", MQTTdeviceID );
-              MQTTclient.publish(topic, msg); 
+              MQTTclient.publish(IntTimeTopic, msg); 
             }
           } 
         }
@@ -1977,37 +1966,3 @@ void drawBlankDialogueBox()
   tft.drawRoundRect(20, 50, 200, 220, 6, ILI9341_WHITE);
 }
 //=============================================================================================================================
-/* Recode russian fonts from UTF-8 to Windows-1251 */
-/*String utf8rus(String source)
-{
-  int i,k;
-  String target;
-  unsigned char n;
-  char m[2] = { '0', '\0' };
-
-  k = source.length(); i = 0;
-
-  while (i < k) {
-    n = source[i]; i++;
-
-    if (n >= 0xC0) {
-      switch (n) {
-        case 0xD0: {
-          n = source[i]; i++;
-          if (n == 0x81) { n = 0xA8; break; }
-          if (n >= 0x90 && n <= 0xBF) n = n + 0x30;
-          break;
-        }
-        case 0xD1: {
-          n = source[i]; i++;
-          if (n == 0x91) { n = 0xB8; break; }
-          if (n >= 0x80 && n <= 0x8F) n = n + 0x70;
-          break;
-        }
-      }
-    }
-    m[0] = n; target = target + String(m);
-  }
-return target;
-}
-*/

@@ -13,7 +13,9 @@
 #define DEBUG_EEPROM true     // print EEPROM logs
 #define DEBUG_BATT true       // print BATT logs
 
-#define CS_PIN D2
+#define CS_PIN D2             // Touchscreen CS Pin
+
+#define BATT_PIN A0           // ADC Battery input Pin
 
 //#define TS_MINX 250
 //#define TS_MINY 200 // calibration points for touchscreen

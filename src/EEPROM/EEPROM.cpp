@@ -1,4 +1,8 @@
+//#include "EEPROM.h"
 
+//long EEPROMReadlong(long address);
+//void EEPROMWritelong(int address, long value); 
+/*
 //=============================================================================================================================
 long EEPROMReadlong(long address) 
 { 
@@ -23,7 +27,4 @@ void EEPROMWritelong(int address, long value)
   EEPROM.write(address + 3, one);
 }
 //=============================================================================================================================
-
-
-//long EEPROMReadlong(long address);
-//void EEPROMWritelong(int address, long value); 
+*/
