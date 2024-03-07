@@ -190,8 +190,8 @@ void setup()
     Serial.println("GC-20M Starting...");
   #endif
 
-  tft.begin();
-  tft.setRotation(0);
+  ts.begin();
+  ts.setRotation(0);
 
   tft.begin();
   tft.setRotation(2);
