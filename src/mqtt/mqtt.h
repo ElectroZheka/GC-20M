@@ -9,7 +9,8 @@ void MQTTreconnect()
 
     //String clientId = "ESP_Dosimeter";
     String clientId = String(MQTTdeviceID);
-    if (MQTTclient.connect(clientId.c_str(), mqtt_user, mqtt_pass))                  // Attempt to connect
+    if (MQTTclient.connect(clientId.c_str(), MQTTlogin, MQTTpassword))                  // Attempt to connect
+//    if (MQTTclient.connect(clientId.c_str(), mqtt_user, mqtt_pass))                  // Attempt to connect
     {                                                          
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.println("Connected");

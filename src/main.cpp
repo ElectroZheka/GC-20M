@@ -31,6 +31,9 @@ int passwordLength;
 int SSIDLength;
 int MQTTserverLength;
 int DeviceIDLength;
+int MQTTportLength;
+int MQTTloginLength;
+int MQTTpassLength;
 char ssid[20];
 char password[20];
 WiFiClient client;
@@ -38,15 +41,12 @@ WiFiClient client;
 // MQTT variables
 char MQTTserverIP[15];                      // = "192.168.1.1";
 char MQTTdeviceID[20];                      // = "Esp_Dosimeter"; 
-//char MQTTuser[20];                        //  
-//char MQTTpass[20];                        // = "Esp_Dosimeter";
+char MQTTport[20];    
+char MQTTlogin[20];                         //  
+char MQTTpassword[20];                      // 
 
 int attempts;                               // number of connection attempts when device starts up in monitoring mode
 int MQTTattempts;                           // number of MQTT connection attempts when device starts up in monitoring mode
-// PubSubClient variables
-const int mqtt_port = 1883;                 // Порт для подключения к серверу MQTT
-const char *mqtt_user = "hamqtt";
-const char *mqtt_pass = "hamqtt";
 
 //String subscr_topic = "EspDosimeter/Control/";
 //String prefix = "EspDosimeter/";
@@ -116,18 +116,16 @@ int batteryUpdateCounter = 29;
 const int saveUnits = 0;
 const int saveAlertThreshold = 1;   // Addresses for storing settings data in the EEPROM
 const int saveCalibration = 2;
-/*const int saveDeviceMode = 3;
-const int saveLoggingMode = 4;
-const int saveSSIDLen = 5;
-const int savePWLen = 6;
-const int saveIDLen = 7;
-const int saveAPILen = 8; */
 const int saveDeviceMode = 6;
 const int saveLoggingMode = 7;
 const int saveSSIDLen = 8;
 const int savePWLen = 9;
-const int saveIDLen = 10;
-const int saveAPILen = 11;
+const int saveIPLen = 10;
+const int saveIDLen = 11;
+const int savePortLen = 12;
+const int saveMLoginLen = 13;
+const int saveMPassLen = 14;
+
 //=============================================================================================================================
 // Timed Count Variables:
 int interval = 5;
@@ -174,12 +172,12 @@ void EEPROMWritelong(int address, long value);            // EEPRON Write
 //=============================================================================================================================
 void setup()
 {
-  pinMode(D0, OUTPUT); // buzzer switch
-  pinMode(D3, OUTPUT); // LED
-  digitalWrite(D3, LOW);
-  digitalWrite(D0, LOW);
-  
-  Serial.begin(115200);
+  pinMode(ACT_LED, OUTPUT);            // LED
+  pinMode(BUZZER_PIN, OUTPUT);         // Buzzer
+  digitalWrite(ACT_LED, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+   
+  Serial.begin(DEBUG_BAUD);
 
   delay(500);
 
@@ -198,7 +196,7 @@ void setup()
   tft.fillScreen(ILI9341_BLACK);
 
   //EEPROM.begin(4096);   // initialize emulated EEPROM sector with 4 kb
-  EEPROM.begin(128);   // initialize emulated EEPROM sector 128 byte
+  EEPROM.begin(256);   // initialize emulated EEPROM sector 256 byte
 
   #if DEBUG_MODE && DEBUG_EEPROM
     Serial.println("Reading contants from EEPROM...");
@@ -211,29 +209,47 @@ void setup()
   isLogging = EEPROM.read(saveLoggingMode);                          //Address = 7
   SSIDLength = EEPROM.read(saveSSIDLen);                             //Address = 8
   passwordLength = EEPROM.read(savePWLen);                           //Address = 9
-  MQTTserverLength = EEPROM.read(saveIDLen);                         //Address = 10
-  DeviceIDLength = EEPROM.read(saveAPILen);                          //Address = 11
+  MQTTserverLength = EEPROM.read(saveIPLen);                         //Address = 10
+  DeviceIDLength = EEPROM.read(saveIDLen);                           //Address = 11
+  MQTTportLength = EEPROM.read(savePortLen);                         //Address = 12
+  MQTTloginLength = EEPROM.read(saveMLoginLen);                      //Address = 13
+  MQTTpassLength = EEPROM.read(saveMPassLen);                        //Address = 14
 
-  for (int i = 12; i < 12 + SSIDLength; i++)
+  for (int i = 20; i < 20 + SSIDLength; i++)
   {
-    ssid[i - 12] = EEPROM.read(i);
+    ssid[i - 20] = EEPROM.read(i);
   }
 
-  for (int j = 32; j < 32 + passwordLength; j++)
+  for (int j = 40; j < 40 + passwordLength; j++)
   {
-    password[j - 32] = EEPROM.read(j);
+    password[j - 40] = EEPROM.read(j);
   }
 
-  for (int k = 52; k < 52 + MQTTserverLength; k++)
+  for (int l = 60; l < 60 + DeviceIDLength; l++)
   {
-    MQTTserverIP[k - 52] = EEPROM.read(k);
+    MQTTdeviceID[l - 60] = EEPROM.read(l);
   }
 
-  for (int l = 72; l < 72 + DeviceIDLength; l++)
+  for (int k = 80; k < 80 + MQTTserverLength; k++)
   {
-    MQTTdeviceID[l - 72] = EEPROM.read(l);
+    MQTTserverIP[k - 80] = EEPROM.read(k);
+  }
+ 
+  for (int j = 100; j < 100 + MQTTportLength; j++)
+  {
+    MQTTport[j - 100] = EEPROM.read(j);
   }
 
+  for (int k = 120; k < 120 + MQTTloginLength; k++)
+  {
+    MQTTlogin[k - 120] = EEPROM.read(k);
+  }
+
+  for (int l = 140; l < 140 + MQTTpassLength; l++)
+  {
+    MQTTpassword[l - 140] = EEPROM.read(l);
+  }
+ 
   #if DEBUG_MODE && DEBUG_EEPROM
     Serial.println("doseUnits: "+ String(doseUnits));
     Serial.println("alarmThreshold: "+ String(alarmThreshold));  
@@ -244,6 +260,9 @@ void setup()
     Serial.println("Password: "+ String(password) + " Length: "+ String(passwordLength));
     Serial.println("MQTTserver: "+ String(MQTTserverIP) + " Length: "+ String(MQTTserverLength));
     Serial.println("DeviceID: "+ String(MQTTdeviceID) + " Length: "+ String(DeviceIDLength));
+    Serial.println("M Port: "+ String(MQTTport) + " Length: "+ String(MQTTportLength));
+    Serial.println("M Login: "+ String(MQTTlogin) + " Length: "+ String(MQTTloginLength));
+    Serial.println("M Pass: "+ String(MQTTpassword) + " Length: "+ String(MQTTpassLength));    
     Serial.println("====================================");
   #endif
 
@@ -314,18 +333,22 @@ void setup()
 
       delay(1500);
 
-      MQTTclient.setServer(MQTTserverIP, mqtt_port);
+      MQTTclient.setServer(MQTTserverIP, atoi(MQTTport));  
       MQTTclient.setCallback(callback);
       MQTTreconnect();
     }
     drawHomePage();
   }
+  #if DEBUG_MODE
+    Serial.println("Start Up Init Complete. Ready to Go ...");
+    Serial.println("Go!");
+  #endif
 } //                                                            void setup()
 //=============================================================================================================================
 void loop()
 {
 MQTTclient.loop();
-
+//=============================================================================================================================
   if (page == 0)                                                // homepage
   {
     currentMillis = millis();
@@ -359,6 +382,12 @@ MQTTclient.loop();
           Serial.println("BATT: " + String(batteryPercent) + "%");
         #endif
 
+        #if DEBUG_MODE && DEBUG_MQTT
+          Serial.print("MQTT: Publish: Topic: ");
+          Serial.print(batterytopic);                                                        
+          Serial.print(": ");
+          Serial.println(batteryPercent);
+        #endif
         snprintf (msg, MSG_BUFFER_SIZE, "%i", batteryPercent);
         MQTTclient.publish(batterytopic, msg);
       }
@@ -540,12 +569,12 @@ MQTTclient.loop();
       if (ledSwitch)
       {
         //digitalWrite(D3, LOW);             // LED off
-        digitalWrite(D3, HIGH);            // trigger buzzer and led if they are activated
+        digitalWrite(ACT_LED, HIGH);            // trigger buzzer and led if they are activated
       } 
       if (buzzerSwitch){
-        digitalWrite(D0, LOW);             // Buzzer off
+        digitalWrite(BUZZER_PIN, LOW);             // Buzzer off
         delay(1);
-        digitalWrite(D0, HIGH);
+        digitalWrite(BUZZER_PIN, HIGH);
       }  
       previousCount = currentCount;
       previousMicros = micros();           // Начинаем отсчёт одновибратора
@@ -555,11 +584,11 @@ MQTTclient.loop();
 
     if (currentMicros - previousMicros >= 200)
     {
-      digitalWrite(D3, LOW);               // LED off
-      digitalWrite(D0, LOW);               // Buzzer off
+      digitalWrite(ACT_LED, LOW);               // LED off
+      digitalWrite(BUZZER_PIN, LOW);               // Buzzer off
       previousMicros = currentMicros;      // 
     }
-//---------------------------------------------------------------------------------
+    //---------------------------------------------------------------------------------
     if (!ts.touched())
       wasTouched = 0;
     if (ts.touched() && !wasTouched) // A way of "debouncing" the touchscreen. Prevents multiple inputs from single touch
@@ -649,8 +678,8 @@ MQTTclient.loop();
               }
 
               #if DEBUG_MODE && DEBUG_MQTT
-                Serial.print("MQTT: Topic: ");
-                Serial.print(IntTimeTopic);                                                        //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                Serial.print("MQTT: Publish: Topic: ");
+                Serial.print(IntTimeTopic);                                                        
                 Serial.print(": ");
                 Serial.println(value);
               #endif
@@ -672,12 +701,24 @@ MQTTclient.loop();
         {
           tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 153, ledOnBitmap, 45, 45, ILI9341_WHITE);
+              #if DEBUG_MODE && DEBUG_MQTT
+                Serial.print("MQTT: Publish: Topic: ");
+                Serial.print(lighttopic);                                                        
+                Serial.print(": ");
+                Serial.println(true);
+              #endif
           MQTTclient.publish(lighttopic, "true");          
         }
         else
         {
           tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 153, ledOffBitmap, 45, 45, ILI9341_WHITE);
+              #if DEBUG_MODE && DEBUG_MQTT
+                Serial.print("MQTT: Publish: Topic: ");
+                Serial.print(lighttopic);                                                        
+                Serial.print(": ");
+                Serial.println(false);
+              #endif
           MQTTclient.publish(lighttopic, "false");
         }
       }
@@ -763,6 +804,7 @@ MQTTclient.loop();
       }
     }
   }
+  //=============================================================================================================================
   else if (page == 1) // settings page. all display elements are drawn when drawSettingsPage() is called
   {
     if (!ts.touched())
@@ -820,6 +862,7 @@ MQTTclient.loop();
       }
     }
   }
+  //=============================================================================================================================
   else if (page == 2) // units page
   {
     if (!ts.touched())
@@ -870,6 +913,7 @@ MQTTclient.loop();
       }
     }
   }
+  //=============================================================================================================================
   else if (page == 3)        // alert thresold page
   {
     tft.setFont();
@@ -912,7 +956,7 @@ MQTTclient.loop();
               }
               if (MQTTclient.connected()) 
               {
-                snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);
+                snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);                             //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 snprintf (topic, MSG_BUFFER_SIZE, "%s/System/AlertThreshold", MQTTdeviceID );
                 Serial.print("MQTT: Topic: ");
                 Serial.print(topic);
@@ -939,6 +983,7 @@ MQTTclient.loop();
       }
     }
   }
+  //=============================================================================================================================
   else if (page == 4)     // calibration page
   {
     tft.setFont();
@@ -981,7 +1026,7 @@ MQTTclient.loop();
               }
               if (MQTTclient.connected()) 
               {
-                snprintf (msg, MSG_BUFFER_SIZE, "%i", conversionFactor);
+                snprintf (msg, MSG_BUFFER_SIZE, "%i", conversionFactor);        //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 Serial.print("MQTT: Topic: ");
                 Serial.print(ConvFactorTopic);
                 Serial.print(": ");
@@ -1005,7 +1050,8 @@ MQTTclient.loop();
       }
     }
   }
-  else if (page == 5)  // Wifi page
+  //=============================================================================================================================
+  else if (page == 5)  // Logging and Wifi page
   {
     if (!ts.touched())
       wasTouched = 0;
@@ -1021,17 +1067,17 @@ MQTTclient.loop();
         Serial.println("TS: X: "+ String(x) + " Y: "+ String(y));
       #endif
 
-      if ((x > 4 && x < 62) && (y > 271 && y < 315))
+      if ((x > 4 && x < 62) && (y > 271 && y < 315))        // Logging mode change
       {
         page = 1;
-        if (EEPROM.read(saveLoggingMode) != isLogging) // check current EEPROM value and only write if new value is different
-        {
-          EEPROM.write(saveLoggingMode, isLogging); 
-          EEPROM.commit();
-        }
+//        if (EEPROM.read(saveLoggingMode) != isLogging)      // check current EEPROM value and only write if new value is different
+//        {
+//          EEPROM.write(saveLoggingMode, isLogging); 
+//          EEPROM.commit();
+//        }
         drawSettingsPage();
       }
-      else if ((x > 3 && x < 237) && (y > 64 && y < 108))  // wifi setup button
+      else if ((x > 3 && x < 237) && (y > 64 && y < 108))   // wifi setup button
       {
         tft.setFont(&FreeSans9pt7b);
         tft.setTextSize(1);
@@ -1061,111 +1107,146 @@ MQTTclient.loop();
         tft.setCursor(20, 240);
         tft.println("MQTT device ID");
 
+        #if DEBUG_MODE 
+          Serial.println("====================================");
+          Serial.println("WIFI AP: Change Mode to AP");
+          Serial.println("WIFI AP: Connect to AP GC-20M and browse to IP adress 192.168.4.1.");
+          Serial.println("WIFI AP: Enter credentials of your WiFi network and"); 
+          Serial.println("WIFI AP: the IP address MQTT server and write MQTT device ID");
+          Serial.println("====================================");
+        #endif
+
         delay(100);
         WiFiManager wifiManager;
 
-        char channelIDSt[20] = {0};
-        char writeAPISt[20] = {0};
-///*
-        for (int k = 52; k < 52 + MQTTserverLength; k++)
-        {
-          channelIDSt[k - 52] = EEPROM.read(k);
-        }
-//        Serial.println("READchannelIDLength: "+ String(MQTTserverLength));
-//        Serial.println("READchannelIDSt: "+ String(channelIDSt));
+        char ssidChar[20] = {0};
+        char passwordChar[20] = {0};
+        char AP_mqtt_clientid[20] = {0};
+        char AP_mqtt_server[20] = {0};
+        char AP_mqtt_port[5] = {0};
+        char AP_mqtt_login[20] = {0};
+        char AP_mqtt_pass[20] = {0};
 
-        for (int l = 72; l < 72 + DeviceIDLength; l++)
-        {
-          writeAPISt[l - 72] = EEPROM.read(l);
-        }
-//        Serial.println("READDeviceIDLength: "+ String(DeviceIDLength));
-//        Serial.println("READwriteAPISt: "+ String(writeAPISt));
-//*/
-        WiFiManagerParameter channel_id("0", "MQTT Server IP", channelIDSt, 20); // create custom parameters for setup
-        
-        WiFiManagerParameter write_api("1", "MQTT Device ID", writeAPISt, 20);
-        wifiManager.addParameter(&channel_id);
-        wifiManager.addParameter(&write_api);
+        WiFiManagerParameter wm_mqtt_clientid("0", "MQTT Device ID", AP_mqtt_clientid, 20);
+        WiFiManagerParameter wm_mqtt_server("1", "MQTT Server IP", AP_mqtt_server, 20); // create custom parameters for setup
+        WiFiManagerParameter wm_mqtt_port("2", "MQTT Server port", AP_mqtt_port, 5);
+        WiFiManagerParameter wm_mqtt_login("3", "MQTT Login", AP_mqtt_login, 20);
+        WiFiManagerParameter wm_mqtt_pass("4", "MQTT Password", AP_mqtt_pass, 20);
 
-        wifiManager.startConfigPortal("GC-20M");            // put the esp in AP mode for wifi setup, create a network with name "GC20"
+        wifiManager.addParameter(&wm_mqtt_clientid);
+        wifiManager.addParameter(&wm_mqtt_server);
+        wifiManager.addParameter(&wm_mqtt_port);
+        wifiManager.addParameter(&wm_mqtt_login); 
+        wifiManager.addParameter(&wm_mqtt_pass);        
 
-        strcpy(channelIDSt, channel_id.getValue());
-        strcpy(writeAPISt, write_api.getValue());
-//       Serial.println("channelIDSt: "+ String(channelIDSt));
-//        Serial.println("writeAPISt: "+ String(writeAPISt));
+        wifiManager.startConfigPortal("GC-20M");             // put the esp in AP mode for wifi setup, create a network with name "GC20"
 
-        size_t idLen = String(channelIDSt).length();
-
-        size_t apiLen = String(writeAPISt).length();
-
-//       Serial.println("idLen: "+ String(idLen));
-//       Serial.println("apiLen: "+ String(apiLen));
-
-        char channelInit = EEPROM.read(4001);  // first character of channelID is stored in EEPROM address 4001
-//       Serial.println("channelInit: "+ String(channelInit));
-        char apiKeyInit = EEPROM.read(4002);   // Only overwrite channelIDSt and writeAPISt if new value of the first character is different from what was saved.
-//       Serial.println("apiKeyInit: "+ String(apiKeyInit));
-        if (channelInit != channelIDSt[0])   
-        {
-          for (unsigned int a = 52; a < 52 + idLen; a++)
-          {
-            EEPROM.write((a), channelIDSt[a - 52]);
-          }
-//          Serial.println("WRITEchannelIDSt: "+ String(channelIDSt));
-          EEPROM.write(saveIDLen, idLen);
-//          Serial.println("WRITEidLen: "+ String(idLen));
-        }
-
-        if(apiKeyInit != writeAPISt[0])
-        {
-          for (unsigned int b = 72; b < 72 + apiLen; b++)
-          {
-            EEPROM.write((b), writeAPISt[b - 72]);
-          }
-//          Serial.println("WRITEwriteAPISt: "+ String(writeAPISt));
-          EEPROM.write(saveAPILen, apiLen);
-//          Serial.println("WRITEapiLen: "+ String(apiLen));
-        }
-
-        String ssidString = WiFi.SSID();      // retrieve ssid and password form the WifiManager library
+        String ssidString = WiFi.SSID();                     // retrieve ssid and password form the WifiManager library
         String passwordString = WiFi.psk();
+        strcpy(AP_mqtt_clientid, wm_mqtt_clientid.getValue());
+        strcpy(AP_mqtt_server, wm_mqtt_server.getValue());
+        strcpy(AP_mqtt_port, wm_mqtt_port.getValue());
+        strcpy(AP_mqtt_login, wm_mqtt_login.getValue());
+        strcpy(AP_mqtt_pass, wm_mqtt_pass.getValue());
 
         size_t ssidLen = ssidString.length();
         size_t passLen = passwordString.length();
+        size_t m_idLen = String(AP_mqtt_clientid).length();
+        size_t m_ipLen = String(AP_mqtt_server).length();
+        size_t m_portLen = String(AP_mqtt_port).length();
+        size_t m_loginLen = String(AP_mqtt_login).length();
+        size_t m_passLen = String(AP_mqtt_pass).length();
 
-        Serial.println(ssidLen);
-        Serial.println(passLen);
-
-        char ssidChar[20];
-        char passwordChar[20];
+        #if DEBUG_MODE && DEBUG_AP
+          Serial.println("WIFI AP: AP_wifi_ssid: " + (ssidString) + " ssidLen: " + String(ssidLen));
+          Serial.println("WIFI AP: AP_wifi_pass: " + (passwordString) + " passLen: " + String(passLen));
+          Serial.println("WIFI AP: AP_mqtt_clientid: " + String(AP_mqtt_clientid) + " m_idLen: "+ String(m_idLen));
+          Serial.println("WIFI AP: AP_mqtt_server: " + String(AP_mqtt_server) + " m_ipLen: "+ String(m_ipLen));
+          Serial.println("WIFI AP: AP_mqtt_port: "+ String(AP_mqtt_port) + " m_portLen: "+ String(m_portLen));
+          Serial.println("WIFI AP: AP_mqtt_login: "+ String(AP_mqtt_login) + "m_loginLen: "+ String(m_loginLen));
+          Serial.println("WIFI AP: AP_mqtt_pass: "+ String(AP_mqtt_pass) + "m_passLen: "+ String(m_passLen));
+        #endif 
 
         ssidString.toCharArray(ssidChar, ssidLen + 1); 
         passwordString.toCharArray(passwordChar, passLen + 1);
 
-        for (unsigned int a = 12; a < 12 + ssidLen; a++)
+        for (unsigned int a = 20; a < 20 + ssidLen; a++)
         {
-          EEPROM.write((a), ssidChar[a - 12]);             // save ssid and ssid length to EEPROM
+          EEPROM.write((a), ssidChar[a - 20]);               // save ssid and ssid length to EEPROM
         }
+        #if DEBUG_MODE && DEBUG_EEPROM
+          Serial.println("EEPROM: WRITE_ssid: "+ String(ssidChar) + " WRITEidLen: "+ String(ssidLen));
+        #endif
         EEPROM.write(saveSSIDLen, ssidLen);
         
-        for (unsigned int b = 32; b < 32 + passLen; b++)
+        for (unsigned int b = 40; b < 40 + passLen; b++)
         {    
-          EEPROM.write((b), passwordChar[b - 32]);          // save password and password length to EEPROM
+          EEPROM.write((b), passwordChar[b - 40]);          // save password and password length to EEPROM
         }
+        #if DEBUG_MODE && DEBUG_EEPROM
+          Serial.println("EEPROM: WRITE_password: "+ String(passwordChar) + " WRITEidLen: "+ String(passLen));
+        #endif
         EEPROM.write(savePWLen, passLen);
 
-        EEPROM.write(4001, channelIDSt[0]);                 // save first characters of channel ID and api key to EEPROM
-        EEPROM.write(4002, writeAPISt[0]);
+        for (unsigned int b = 60; b < 60 + m_idLen; b++)
+        {
+          EEPROM.write((b), AP_mqtt_clientid[b - 60]);
+        }
+        #if DEBUG_MODE && DEBUG_EEPROM
+          Serial.println("EEPROM: WRITE_clientid: "+ String(AP_mqtt_clientid) + " WRITEidLen: "+ String(m_idLen));
+        #endif
+        EEPROM.write(saveIDLen, m_idLen);
+
+        for (unsigned int a = 80; a < 80 + m_ipLen; a++)
+        {
+          EEPROM.write((a), AP_mqtt_server[a - 80]);
+        }
+        #if DEBUG_MODE && DEBUG_EEPROM
+          Serial.println("EEPROM: WRITE_mqtt_server: "+ String(AP_mqtt_server) + " WRITEipLen: "+ String(m_ipLen));
+        #endif
+        EEPROM.write(saveIPLen, m_ipLen);
+
+        for (unsigned int a = 100; a < 100 + m_portLen; a++)
+        {
+          EEPROM.write((a), AP_mqtt_port[a - 100]);
+        }
+        #if DEBUG_MODE && DEBUG_EEPROM
+          Serial.println("EEPROM: WRITE_mqtt_port: "+ String(AP_mqtt_port) + " WRITEportLen: "+ String(m_portLen));
+        #endif
+        EEPROM.write(savePortLen, m_portLen);
+
+        for (unsigned int a = 120; a < 120 + m_loginLen; a++)
+        {
+          EEPROM.write((a), AP_mqtt_login[a - 120]);
+        }
+        #if DEBUG_MODE && DEBUG_EEPROM
+          Serial.println("EEPROM: WRITE_mqtt_login: "+ String(AP_mqtt_login) + " WRITEloginLen: "+ String(m_loginLen));
+        #endif
+        EEPROM.write(saveMLoginLen, m_loginLen);
+
+        for (unsigned int a = 140; a < 140 + m_passLen; a++)
+        {
+          EEPROM.write((a), AP_mqtt_pass[a - 140]);
+        }
+        #if DEBUG_MODE && DEBUG_EEPROM
+          Serial.println("EEPROM: WRITE_mqtt_pass: "+ String(AP_mqtt_pass) + " WRITEpassLen: "+ String(m_passLen));
+        #endif
+        EEPROM.write(saveMPassLen, m_passLen);
 
         EEPROM.commit();
 
         tft.setCursor(16, 265);
         tft.println("Settings saved. Restarting");
 
+        #if DEBUG_MODE 
+          Serial.println("WIFI AP: Settings saved. Restarting");
+        #endif
+
         delay(1000);
         
         ESP.reset();
       }
+//=============================================================================================================================     
       else if ((x > 3 && x < 237) && (y > 162 && y < 206)) // upload data
       {
       /*  
@@ -1204,6 +1285,7 @@ MQTTclient.loop();
       }
     }
   }
+  //=============================================================================================================================
   else if (page == 6) // timed count setup page
   {
     if (interval < 10)
@@ -1283,6 +1365,7 @@ MQTTclient.loop();
       }
     }
   }
+  //=============================================================================================================================
   else if (page == 7) // timed count running page
   {
     elapsedTime = millis() - startMillis;
@@ -1363,6 +1446,7 @@ MQTTclient.loop();
       }
     }
   }
+  //=============================================================================================================================
   else if (page == 8)          // device mode selection page
   {
     if (!ts.touched())
@@ -1565,7 +1649,7 @@ void drawHomePage()
   {
     tft.fillRect(157, 2, 18, 18, ILI9341_BLACK);
   }
-
+/*
   if (isLogging)
   {
     tft.setCursor(175, 16);
@@ -1575,7 +1659,7 @@ void drawHomePage()
   {
     tft.fillRect(175, 2, 18, 18, ILI9341_BLACK);
   }
-  
+ */ 
   if (deviceMode)
   {
     tft.drawBitmap(188, 1, wifiBitmap, 19, 19, ILI9341_WHITE);
@@ -1589,8 +1673,8 @@ void drawHomePage()
 //=============================================================================================================================
 void drawSettingsPage()
 {
-  digitalWrite(D3, LOW);
-  digitalWrite(D0, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(ACT_LED, LOW);
 
   drawFrame();
   drawBackButton();
@@ -1861,8 +1945,8 @@ void drawDeviceModePage()
 //=============================================================================================================================
 void IRAM_ATTR isr() // interrupt service routine
 {
-  if ((micros() - 200) > previousIntMicros)                           //!!!!!!!!!!!!!! Вытащить в переменную Dead_Time_Geiger!!!!!!!!!!!!!!!!!!!!!!!!
-  {
+  if ((micros() - Dead_Time_Geiger) > previousIntMicros) 
+  {            
     currentCount++;
     cumulativeCount++;
   }
@@ -1909,8 +1993,6 @@ void drawFrame(){
 
   if (MQTTclient.connected())
   {
-  //  tft.setTextSize(1);
-  //  tft.setFont(&FreeSans9pt7b);
     tft.setCursor(157, 16);
     tft.println("M");
   }
