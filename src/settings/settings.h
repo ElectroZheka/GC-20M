@@ -3,7 +3,7 @@
 // ========================================
 
 #define DEBUG_BAUD 921600
-#define DEBUG_MODE true  // change "false" to "true" to enable
+#define DEBUG_MODE false  // change "false" to "true" to enable
 //#define DEBUG_MODE false  // change "false" to "true" to enable
 // Next, logs levels for comfortable deallbugging, 
 // if DEBUG_MODE == false, logs level are not important 

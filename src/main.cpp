@@ -7,7 +7,7 @@
 */
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
-#include <DNSServer.h>
+//#include <DNSServer.h>
 #include <ESP8266WebServer.h>
 #include <WifiManager.h>
 #include <EEPROM.h>
@@ -39,9 +39,9 @@ char password[20];
 WiFiClient client;
 //=============================================================================================================================
 // MQTT variables
-char MQTTserverIP[15];                      // = "192.168.1.1";
 char MQTTdeviceID[20];                      // = "Esp_Dosimeter"; 
-char MQTTport[20];    
+char MQTTserverIP[15];                      // = "192.168.1.1";
+char MQTTport[5];    
 char MQTTlogin[20];                         //  
 char MQTTpassword[20];                      // 
 
@@ -1122,13 +1122,13 @@ MQTTclient.loop();
         char ssidChar[20] = {0};
         char passwordChar[20] = {0};
         char AP_mqtt_clientid[20] = {0};
-        char AP_mqtt_server[20] = {0};
+        char AP_mqtt_server[15] = {0};
         char AP_mqtt_port[5] = {0};
         char AP_mqtt_login[20] = {0};
         char AP_mqtt_pass[20] = {0};
 
         WiFiManagerParameter wm_mqtt_clientid("0", "MQTT Device ID", AP_mqtt_clientid, 20);
-        WiFiManagerParameter wm_mqtt_server("1", "MQTT Server IP", AP_mqtt_server, 20); // create custom parameters for setup
+        WiFiManagerParameter wm_mqtt_server("1", "MQTT Server IP", AP_mqtt_server, 15); // create custom parameters for setup
         WiFiManagerParameter wm_mqtt_port("2", "MQTT Server port", AP_mqtt_port, 5);
         WiFiManagerParameter wm_mqtt_login("3", "MQTT Login", AP_mqtt_login, 20);
         WiFiManagerParameter wm_mqtt_pass("4", "MQTT Password", AP_mqtt_pass, 20);
@@ -1210,7 +1210,7 @@ MQTTclient.loop();
         {
           EEPROM.write((a), AP_mqtt_port[a - 100]);
         }
-        #if DEBUG_MODE && DEBUG_EEPROM
+        #if DEBUG_MODE && DEBUG_EEPROM                                                                //Поправить с учётом длинны данных
           Serial.println("EEPROM: WRITE_mqtt_port: "+ String(AP_mqtt_port) + " WRITEportLen: "+ String(m_portLen));
         #endif
         EEPROM.write(savePortLen, m_portLen);
