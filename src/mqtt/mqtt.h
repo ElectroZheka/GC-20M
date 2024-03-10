@@ -1,3 +1,8 @@
+#ifndef MQTT_INCLUDED
+#define MQTT_INCLUDED
+
+#include "../settings/settings.h"
+
 void MQTTreconnect() 
 {
   MQTTattempts = 0;
@@ -158,3 +163,4 @@ void callback(char* topic, byte* payload, unsigned int length)
     }
   }
 }                                                        //void callback
+#endif

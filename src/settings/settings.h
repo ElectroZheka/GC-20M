@@ -1,6 +1,8 @@
 // ========================================
 // ==== Settings LEVEL 1 (required) =======
 // ========================================
+#ifndef SETTINGS_INCLUDED
+#define SETTINGS_INCLUDED
 
 #define DEBUG_BAUD 921600
 #define DEBUG_MODE false  // change "false" to "true" to enable
@@ -45,3 +47,7 @@
 #define TS_MAXY 3700
 
 #define Dead_Time_Geiger 150  // Dead time Geiger senson in mS 
+
+#define MSG_BUFFER_SIZE	(50)
+
+#endif

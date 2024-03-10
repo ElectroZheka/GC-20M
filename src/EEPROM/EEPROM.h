@@ -1,4 +1,10 @@
+#ifndef EEPROM_INCLUDED
+#define EEPROM_INCLUDED
 
+#include "../settings/settings.h"
+
+long EEPROMReadlong(long address);                        // EEPRON Read
+void EEPROMWritelong(int address, long value);            // EEPRON Write
 //=============================================================================================================================
 long EEPROMReadlong(long address) 
 { 
@@ -27,3 +33,4 @@ void EEPROMWritelong(int address, long value)
 
 //long EEPROMReadlong(long address);
 //void EEPROMWritelong(int address, long value); 
+#endif
