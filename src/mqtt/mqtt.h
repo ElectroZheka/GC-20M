@@ -1,7 +1,7 @@
 void MQTTreconnect() 
 {
   MQTTattempts = 0;
-  while ((!MQTTclient.connected()) && (MQTTattempts < 3))      // Loop until we're reconnected
+  while ((!MQTTclient.connected()) && (MQTTattempts < 3))                 // Loop until we're reconnected
   {   
     #if DEBUG_MODE && DEBUG_MQTT
       Serial.print("Attempting MQTT connection...");
@@ -9,15 +9,14 @@ void MQTTreconnect()
 
     //String clientId = "ESP_Dosimeter";
     String clientId = String(MQTTdeviceID);
-    if (MQTTclient.connect(clientId.c_str(), MQTTlogin, MQTTpassword))                  // Attempt to connect
-//    if (MQTTclient.connect(clientId.c_str(), mqtt_user, mqtt_pass))                  // Attempt to connect
+    if (MQTTclient.connect(clientId.c_str(), MQTTlogin, MQTTpassword))    // Attempt to connect
     {                                                          
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.println("Connected");
       #endif
-//      MQTTclient.subscribe(buzzertopic);                       // ... and resubscribe
-//      MQTTclient.subscribe(lighttopic);                       // ... and resubscribe
-      MQTTclient.subscribe(ConvFactorTopic);                       // ... and resubscribe
+//      MQTTclient.subscribe(buzzertopic);                                // ... and resubscribe
+//      MQTTclient.subscribe(lighttopic);                                 // ... and resubscribe
+      MQTTclient.subscribe(ConvFactorTopic);                              // ... and resubscribe
       MQTTclient.publish(iptopic, (WiFi.localIP().toString().c_str()));
     } 
     else 
@@ -27,18 +26,10 @@ void MQTTreconnect()
         Serial.print("failed, Attempts=");
         Serial.println(uint32(MQTTattempts));
       #endif
-      
-      //deviceMode = 0; 
     }
   }
-}//                                                              void MQTTreconnect() 
-
-
-//  #if DEBUG_MODE && DEBUG_MQTT
-//    Serial.println("Reading contants from EEPROM...");
-//  #endif
-
-
+}
+//                                                              void MQTTreconnect() 
 //=============================================================================================================================
 void callback(char* topic, byte* payload, unsigned int length)
 {
