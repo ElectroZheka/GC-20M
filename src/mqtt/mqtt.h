@@ -21,7 +21,13 @@ void MQTTreconnect()
       #endif
 //      MQTTclient.subscribe(buzzertopic);                                // ... and resubscribe
 //      MQTTclient.subscribe(lighttopic);                                 // ... and resubscribe
-      MQTTclient.subscribe(ConvFactorTopic);                              // ... and resubscribe
+//      MQTTclient.subscribe(ConvFactorTopic);                              // ... and resubscribe
+      MQTTclient.subscribe(CommandTopic);                                 // ... and resubscribe
+//      MQTTclient.subscribe(BuzzerCommandTopic);                                 // ... and resubscribe
+//      MQTTclient.subscribe(LightCommandTopic);      
+//      MQTTclient.subscribe(ConvFactorCommandTopic); 
+//      MQTTclient.subscribe(IntTimeCommandTopic);       
+
       MQTTclient.publish(iptopic, (WiFi.localIP().toString().c_str()));
     } 
     else 
@@ -39,9 +45,9 @@ void MQTTreconnect()
 void callback(char* topic, byte* payload, unsigned int length)
 {
   #if DEBUG_MODE && DEBUG_MQTT
-    Serial.print("Message arrived [");
+    Serial.print("MQTT: Message arrived [");
     Serial.print(topic);
-    Serial.print("] ");
+    Serial.print("] [");
   #endif
 
   String messageTemp;
@@ -53,9 +59,12 @@ void callback(char* topic, byte* payload, unsigned int length)
     #endif
     messageTemp += (char)payload[i];
   }
-  Serial.println();
 
-  if (String(topic) == String(buzzertopic)) 
+  #if DEBUG_MODE && DEBUG_MQTT
+    Serial.println("]");
+  #endif
+
+  if (String(topic) == String(BuzzerCommandTopic)) 
   {
     #if DEBUG_MODE && DEBUG_MQTT
       Serial.print("Changing buzzer to ");
@@ -63,7 +72,7 @@ void callback(char* topic, byte* payload, unsigned int length)
     if(messageTemp == "true")
     {
       #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("on");
+        Serial.println("ON");
       #endif
 
       buzzerSwitch = true;
@@ -77,7 +86,7 @@ void callback(char* topic, byte* payload, unsigned int length)
     else if(messageTemp == "false")
     {
       #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("off");
+        Serial.println("OFF");
       #endif
       buzzerSwitch = false;
       if (page == 0)
@@ -94,7 +103,7 @@ void callback(char* topic, byte* payload, unsigned int length)
       #endif
     }
   }
-  else if (String(topic) == String(lighttopic)) 
+  else if (String(topic) == String(LightCommandTopic)) 
   {
     #if DEBUG_MODE && DEBUG_MQTT
       Serial.print("Changing light to ");
@@ -103,7 +112,7 @@ void callback(char* topic, byte* payload, unsigned int length)
     if(messageTemp == "true")
     {
       #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("on");
+        Serial.println("ON");
       #endif
 
       ledSwitch = true;
@@ -117,7 +126,7 @@ void callback(char* topic, byte* payload, unsigned int length)
     else if(messageTemp == "false")
     {
       #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("off");
+        Serial.println("OFF");
       #endif
       ledSwitch = false;
       if (page == 0)
@@ -134,7 +143,7 @@ void callback(char* topic, byte* payload, unsigned int length)
       #endif
     }
   } 
-  else if (String(topic) == String(ConvFactorTopic)) 
+  else if (String(topic) == String(ConvFactorCommandTopic)) 
   {
     if (atoi(messageTemp.c_str()) != int(conversionFactor))
     {

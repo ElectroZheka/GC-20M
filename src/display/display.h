@@ -19,6 +19,7 @@ void drawCancelButton();
 void drawCloseButton();
 void drawBlankDialogueBox();
 
+//=============================================================================================================================
 void drawHomePage()
 {
   tft.fillRect(1, 21, 237, 298, ILI9341_BLACK);
@@ -70,7 +71,7 @@ void drawHomePage()
   tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(1);
   tft.println("NORMAL BACKGROUND");
-  //tft.println(utf8rus("Фон в норме")); //====================================Тут прикол!!!!!!!!!!!!!====================================
+  //tft.println(utf8rus("Фон в норме")); //====================================!!!!!!!!!!!!!====================================
 
   tft.setFont(&FreeSans12pt7b);
   tft.setCursor(7, 141);
@@ -538,6 +539,7 @@ void drawCloseButton()
   tft.println("CLOSE");
 }
 //=============================================================================================================================
+
 void drawBlankDialogueBox()
 {
   tft.setFont(&FreeSans9pt7b);
@@ -545,5 +547,5 @@ void drawBlankDialogueBox()
   tft.fillRoundRect(20, 50, 200, 220, 6, ILI9341_BLACK);
   tft.drawRoundRect(20, 50, 200, 220, 6, ILI9341_WHITE);
 }
-//=============================================================================================================================
+
 #endif

@@ -49,6 +49,7 @@ char MQTTpassword[20];                      //
 
 int attempts;                               // number of connection attempts when device starts up in monitoring mode
 int MQTTattempts;                           // number of MQTT connection attempts when device starts up in monitoring mode
+bool previousMQTTstatus;
 
 //String subscr_topic = "EspDosimeter/Control/";
 //String prefix = "EspDosimeter/";
@@ -65,6 +66,11 @@ char iptopic[MSG_BUFFER_SIZE];
 char batterytopic[MSG_BUFFER_SIZE];
 char ConvFactorTopic[MSG_BUFFER_SIZE];
 char IntTimeTopic[MSG_BUFFER_SIZE];
+char CommandTopic[MSG_BUFFER_SIZE];
+char BuzzerCommandTopic[MSG_BUFFER_SIZE];
+char LightCommandTopic[MSG_BUFFER_SIZE];
+char ConvFactorCommandTopic[MSG_BUFFER_SIZE];
+char IntTimeCommandTopic[MSG_BUFFER_SIZE];
 float value = 0;
 //=============================================================================================================================
 // Display variable
@@ -87,15 +93,17 @@ unsigned long previousMicros;        // Таймер одновибратора
 bool deviceMode;                     // 0 = Portable, 1 = Station
 bool ledSwitch = 1;
 bool buzzerSwitch = 1;
-int integrationMode = 0;             // 0 = medium, 1 = fast, 2 == slow;
+unsigned int integrationMode = 0;             // 0 = medium, 1 = fast, 2 == slow;
 unsigned int alarmThreshold = 5;
 //=============================================================================================================================
 // Geiger counter variable
 unsigned long averageCount;
+unsigned long previousaverageCount;
 unsigned long currentCount;          // incremented by interrupt
 unsigned long previousCount;         // to activate buzzer and LED
 unsigned long cumulativeCount;
 float doseRate;
+float previousdoseRate;
 float totalDose;
 char dose[5];
 int doseLevel;                       // determines home screen warning signs
@@ -111,6 +119,7 @@ int x, y;                           // touch points
 // Battery indicator variables
 int batteryInput;
 int batteryPercent;
+int previousbatteryPercent = 150;    // >100 for first update display when boot
 int batteryMapped = 212;            // pixel location of battery icon
 int batteryUpdateCounter = 29;
 //=============================================================================================================================
@@ -162,8 +171,9 @@ void IRAM_ATTR isr() // interrupt service routine
   {            
     currentCount++;
     cumulativeCount++;
+    previousIntMicros = micros();
   }
-  previousIntMicros = micros();
+  //previousIntMicros = micros();
 }
 //=============================================================================================================================
 //=============================================================================================================================
@@ -185,9 +195,14 @@ void setup()
     Serial.println("GC-20M Starting...");
   #endif
 
+  SPI.begin();
+  SPI.setFrequency(24000000L);
+
   ts.begin();
   ts.setRotation(0);
 
+  //tft.setSPIFreqency(10000000); // set 1 MHz
+  //tft.initSPI(16000000L); // init @ 1 MHz.
   tft.begin();
   tft.setRotation(2);
   tft.fillScreen(ILI9341_BLACK);
@@ -262,12 +277,17 @@ void setup()
     Serial.println("====================================");
   #endif
 
-  snprintf (buzzertopic, MSG_BUFFER_SIZE, "%s/Control/Buzzer", MQTTdeviceID );
-  snprintf (lighttopic, MSG_BUFFER_SIZE, "%s/Control/Light", MQTTdeviceID );
+  snprintf (buzzertopic, MSG_BUFFER_SIZE, "%s/System/Buzzer", MQTTdeviceID );
+  snprintf (lighttopic, MSG_BUFFER_SIZE, "%s/System/Light", MQTTdeviceID );
   snprintf (iptopic, MSG_BUFFER_SIZE, "%s/System/IP", MQTTdeviceID );
   snprintf (batterytopic, MSG_BUFFER_SIZE, "%s/System/Battery", MQTTdeviceID );
   snprintf (ConvFactorTopic, MSG_BUFFER_SIZE, "%s/System/ConversionFactor", MQTTdeviceID );
   snprintf (IntTimeTopic, MSG_BUFFER_SIZE, "%s/System/Integration_Time", MQTTdeviceID );
+  snprintf (CommandTopic, MSG_BUFFER_SIZE, "%s/Control/#", MQTTdeviceID );
+  snprintf (BuzzerCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Buzzer", MQTTdeviceID );
+  snprintf (LightCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Light", MQTTdeviceID );
+  snprintf (ConvFactorCommandTopic, MSG_BUFFER_SIZE, "%s/Control/ConversionFactor", MQTTdeviceID );
+  snprintf (IntTimeCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Integration_Time", MQTTdeviceID );
 
   attachInterrupt(interruptPin, isr, FALLING);
 
@@ -363,16 +383,21 @@ MQTTclient.loop();
         batteryInput = analogRead(BATT_PIN);
         batteryInput = constrain(batteryInput, 590, 800);
         batteryPercent = map(batteryInput, 590, 800, 0, 100);
-        batteryMapped = map(batteryPercent, 100, 0, 212, 233);
 
-        tft.fillRect(212, 6, 22, 10, ILI9341_BLACK);
-        if (batteryPercent < 10)
+        if (batteryPercent != previousbatteryPercent)
         {
-          tft.fillRect(batteryMapped, 6, (234 - batteryMapped), 10, ILI9341_RED);
-        }
-        else
-        {
-          tft.fillRect(batteryMapped, 6, (234 - batteryMapped), 10, ILI9341_GREEN); // draws battery icon
+          previousbatteryPercent = batteryPercent;
+
+          batteryMapped = map(batteryPercent, 100, 0, 212, 233);
+          tft.fillRect(212, 6, 22, 10, ILI9341_BLACK);
+          if (batteryPercent < 10)
+          {
+            tft.fillRect(batteryMapped, 6, (234 - batteryMapped), 10, ILI9341_RED);
+          }
+          else
+          {
+            tft.fillRect(batteryMapped, 6, (234 - batteryMapped), 10, ILI9341_GREEN); // draws battery icon
+          }
         }
 
         #if DEBUG_MODE && DEBUG_BATT
@@ -381,25 +406,27 @@ MQTTclient.loop();
         #endif
 
         #if DEBUG_MODE && DEBUG_MQTT
-          Serial.print("MQTT: Publish: Topic: ");
-          Serial.print(batterytopic);                                                        
-          Serial.print(": ");
-          Serial.println(batteryPercent);
+          Serial.println("MQTT: Publish: Topic: " + String(batterytopic) + ": " + (batteryPercent));
         #endif
         snprintf (msg, MSG_BUFFER_SIZE, "%i", batteryPercent);
         MQTTclient.publish(batterytopic, msg);
       }
 
-      if (MQTTclient.connected())
+      if (MQTTclient.connected() != previousMQTTstatus)
       {
-        tft.setTextSize(1);
-        tft.setFont(&FreeSans9pt7b);
-        tft.setCursor(157, 16);
-        tft.println("M");
-      }
-      else
-      {
-        tft.fillRect(157, 2, 18, 18, ILI9341_BLACK);
+        previousMQTTstatus = MQTTclient.connected();
+        //if (MQTTclient.connected())
+        if (previousMQTTstatus)
+        {
+          tft.setTextSize(1);
+          tft.setFont(&FreeSans9pt7b);
+          tft.setCursor(157, 16);
+          tft.println("M");
+        }
+        else
+        {
+          tft.fillRect(157, 2, 18, 18, ILI9341_BLACK);
+        }
       }
 
       count[i] = currentCount;
@@ -436,7 +463,7 @@ MQTTclient.loop();
 
       else if (integrationMode == 0)
       {
-        averageCount = currentCount - count[i];                              // count[i] stores the value from 60 seconds ago
+        averageCount = currentCount - count[i];                                 // count[i] stores the value from 60 seconds ago
       }
 
       averageCount = ((averageCount) / (1 - 0.00000333 * float(averageCount))); // accounts for dead time of the geiger tube. relevant at high count rates
@@ -459,56 +486,66 @@ MQTTclient.loop();
       else
         doseLevel = 2;
 
-      if (doseRate < 10.0)
+
+      if (doseRate != previousdoseRate)
       {
-        dtostrf(doseRate, 4, 2, dose);                          // display two digits after the decimal point if value is less than 10
-      }
-      else if ((doseRate >= 10) && (doseRate < 100))
-      {
-        dtostrf(doseRate, 4, 1, dose);                          // display one digit after decimal point when dose is greater than 10
-      }
-      else if ((doseRate >= 100))
-      {
-        dtostrf(doseRate, 4, 0, dose);                          // whole numbers only when dose is higher than 100
-      }
-      else {
-        dtostrf(doseRate, 4, 0, dose);                          // covers the rare edge case where the dose rate is sometimes errorenously calculated to be negative
-      }
+        previousdoseRate = doseRate;
+        if (doseRate < 10.0)
+        {
+          dtostrf(doseRate, 4, 2, dose);                          // display two digits after the decimal point if value is less than 10
+        }
+        else if ((doseRate >= 10) && (doseRate < 100))
+        {
+          dtostrf(doseRate, 4, 1, dose);                          // display one digit after decimal point when dose is greater than 10
+        }
+        else if ((doseRate >= 100))
+        {
+          dtostrf(doseRate, 4, 0, dose);                          // whole numbers only when dose is higher than 100
+        }
+        else {
+          dtostrf(doseRate, 4, 0, dose);                          // covers the rare edge case where the dose rate is sometimes errorenously calculated to be negative
+        }
       
-      tft.setFont();
-      tft.setCursor(44, 52);
-      tft.setTextSize(5);
-      tft.setTextColor(ILI9341_WHITE, DOSEBACKGROUND);
-      tft.println(dose);                                        // display effective dose rate
-//      tft.setTextSize(1);
+        tft.setFont();
+        tft.setCursor(44, 52);
+        tft.setTextSize(5);
+        tft.setTextColor(ILI9341_WHITE, DOSEBACKGROUND);
+        tft.println(dose);                                        // display effective dose rate
+//        tft.setTextSize(1);
+      }
+
+      if (averageCount != previousaverageCount)
+      {      
+        previousaverageCount = averageCount;
+        tft.setFont();
+        tft.setCursor(73, 122);
+        tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+        tft.setTextSize(3);
+        tft.println(averageCount);                                // Display CPM
+
+        if (averageCount < 10)
+        {
+          tft.fillRect(90, 120, 144, 25, ILI9341_BLACK);          // erase numbers that may have been left from previous high readings
+        }
+        else if (averageCount < 100)
+        {
+          tft.fillRect(107, 120, 127, 25, ILI9341_BLACK);
+        }
+        else if (averageCount < 1000)
+        {
+          tft.fillRect(124, 120, 110, 25, ILI9341_BLACK);
+        }
+        else if (averageCount < 10000)
+        {
+          tft.fillRect(141, 120, 93, 25, ILI9341_BLACK);
+        }
+        else if (averageCount < 100000)
+        {
+          tft.fillRect(160, 120, 74, 25, ILI9341_BLACK);
+        }
+      }
 
       tft.setFont();
-      tft.setCursor(73, 122);
-      tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-      tft.setTextSize(3);
-      tft.println(averageCount);                                // Display CPM
-
-      if (averageCount < 10)
-      {
-        tft.fillRect(90, 120, 144, 25, ILI9341_BLACK);          // erase numbers that may have been left from previous high readings
-      }
-      else if (averageCount < 100)
-      {
-        tft.fillRect(107, 120, 127, 25, ILI9341_BLACK);
-      }
-      else if (averageCount < 1000)
-      {
-        tft.fillRect(124, 120, 110, 25, ILI9341_BLACK);
-      }
-      else if (averageCount < 10000)
-      {
-        tft.fillRect(141, 120, 93, 25, ILI9341_BLACK);
-      }
-      else if (averageCount < 100000)
-      {
-        tft.fillRect(160, 120, 74, 25, ILI9341_BLACK);
-      }
-
       tft.setTextSize(2);
       tft.setTextColor(ILI9341_WHITE, 0x630C);
       tft.setCursor(80, 192);
@@ -717,12 +754,24 @@ MQTTclient.loop();
         {
           tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 208, buzzerOnBitmap, 45, 45, ILI9341_WHITE);
+              #if DEBUG_MODE && DEBUG_MQTT
+                Serial.print("MQTT: Publish: Topic: ");
+                Serial.print(buzzertopic);                                                        
+                Serial.print(": ");
+                Serial.println(true);
+              #endif
           MQTTclient.publish(buzzertopic, "true");
         }
         else
         {
           tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 208, buzzerOffBitmap, 45, 45, ILI9341_WHITE);
+              #if DEBUG_MODE && DEBUG_MQTT
+                Serial.print("MQTT: Publish: Topic: ");
+                Serial.print(buzzertopic);                                                        
+                Serial.print(": ");
+                Serial.println(false);
+              #endif
           MQTTclient.publish(buzzertopic, "false");
         }
       }
@@ -732,7 +781,7 @@ MQTTclient.loop();
         drawSettingsPage();
       }
     }
-    if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to thingspeak every 5 minutes
+    if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to mqtt every 15 sec    Сделать управляемый интервал
     {
       currentUploadTime = millis();
       if ((currentUploadTime - previousUploadTime) > 15000)
@@ -1219,6 +1268,18 @@ MQTTclient.loop();
         #if DEBUG_MODE 
           Serial.println("WIFI AP: Settings saved. Restarting");
         #endif
+
+        if (MQTTclient.connected()) 
+        {
+          MQTTclient.unsubscribe(CommandTopic);
+          MQTTclient.disconnect();
+        }
+        
+        if (WiFi.status() == WL_CONNECTED)
+        {
+        WiFi.disconnect();
+        WiFi.mode(WIFI_OFF);                                     // turn off wifi
+        }
 
         delay(1000);
         

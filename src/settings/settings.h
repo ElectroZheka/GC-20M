@@ -5,13 +5,13 @@
 #define SETTINGS_INCLUDED
 
 #define DEBUG_BAUD 921600
-#define DEBUG_MODE false  // change "false" to "true" to enable
+#define DEBUG_MODE false // change "false" to "true" to enable
 //#define DEBUG_MODE false  // change "false" to "true" to enable
 // Next, logs levels for comfortable deallbugging, 
 // if DEBUG_MODE == false, logs level are not important 
 #define DEBUG_TS true         // print touchscreen logs
 #define DEBUG_WiFi true       // print WiFi logs
-#define DEBUG_AP true       // print WiFi logs
+#define DEBUG_AP true         // print WiFi logs
 #define DEBUG_MQTT true       // print MQTT logs
 #define DEBUG_EEPROM true     // print EEPROM logs
 #define DEBUG_BATT true       // print BATT logs
