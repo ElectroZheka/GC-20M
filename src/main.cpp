@@ -71,6 +71,7 @@ char BuzzerCommandTopic[MSG_BUFFER_SIZE];
 char LightCommandTopic[MSG_BUFFER_SIZE];
 char ConvFactorCommandTopic[MSG_BUFFER_SIZE];
 char IntTimeCommandTopic[MSG_BUFFER_SIZE];
+char LWTTopic[MSG_BUFFER_SIZE];
 float value = 0;
 //=============================================================================================================================
 // Display variable
@@ -171,9 +172,9 @@ void IRAM_ATTR isr() // interrupt service routine
   {            
     currentCount++;
     cumulativeCount++;
-    previousIntMicros = micros();
+    //previousIntMicros = micros();
   }
-  //previousIntMicros = micros();
+  previousIntMicros = micros();
 }
 //=============================================================================================================================
 //=============================================================================================================================
@@ -288,6 +289,7 @@ void setup()
   snprintf (LightCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Light", MQTTdeviceID );
   snprintf (ConvFactorCommandTopic, MSG_BUFFER_SIZE, "%s/Control/ConversionFactor", MQTTdeviceID );
   snprintf (IntTimeCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Integration_Time", MQTTdeviceID );
+  snprintf (LWTTopic, MSG_BUFFER_SIZE, "%s/System/LWT", MQTTdeviceID );
 
   attachInterrupt(interruptPin, isr, FALLING);
 
@@ -1107,6 +1109,13 @@ MQTTclient.loop();
       }
       else if ((x > 3 && x < 237) && (y > 64 && y < 108))   // wifi setup button
       {
+
+        if (MQTTclient.connected()) 
+        {
+          MQTTclient.unsubscribe(CommandTopic);
+          MQTTclient.disconnect();
+        }
+        
         tft.setFont(&FreeSans9pt7b);
         tft.setTextSize(1);
 
@@ -1268,18 +1277,6 @@ MQTTclient.loop();
         #if DEBUG_MODE 
           Serial.println("WIFI AP: Settings saved. Restarting");
         #endif
-
-        if (MQTTclient.connected()) 
-        {
-          MQTTclient.unsubscribe(CommandTopic);
-          MQTTclient.disconnect();
-        }
-        
-        if (WiFi.status() == WL_CONNECTED)
-        {
-        WiFi.disconnect();
-        WiFi.mode(WIFI_OFF);                                     // turn off wifi
-        }
 
         delay(1000);
         
@@ -1541,3 +1538,16 @@ MQTTclient.loop();
   }
 }//                                                         void loop()
 //=============================================================================================================================
+/*
+        if (MQTTclient.connected()) 
+        {
+          MQTTclient.unsubscribe(CommandTopic);
+          MQTTclient.disconnect();
+        }
+        
+        if (WiFi.status() == WL_CONNECTED)
+        {
+        WiFi.disconnect();
+        WiFi.mode(WIFI_OFF);                                     // turn off wifi
+        }
+*/

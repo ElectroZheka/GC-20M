@@ -12,21 +12,18 @@ void MQTTreconnect()
       Serial.print("Attempting MQTT connection...");
     #endif
 
-    //String clientId = "ESP_Dosimeter";
     String clientId = String(MQTTdeviceID);
-    if (MQTTclient.connect(clientId.c_str(), MQTTlogin, MQTTpassword))    // Attempt to connect
+
+//    if (MQTTclient.connect(clientId.c_str(), MQTTlogin, MQTTpassword))    // Attempt to connect
+    if (MQTTclient.connect(clientId.c_str(), MQTTlogin, MQTTpassword, LWTTopic, 0, false, "Offline", true))    // Attempt to connect
     {                                                          
+      MQTTclient.publish(LWTTopic, "Online");
+
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.println("Connected");
       #endif
-//      MQTTclient.subscribe(buzzertopic);                                // ... and resubscribe
-//      MQTTclient.subscribe(lighttopic);                                 // ... and resubscribe
-//      MQTTclient.subscribe(ConvFactorTopic);                              // ... and resubscribe
+
       MQTTclient.subscribe(CommandTopic);                                 // ... and resubscribe
-//      MQTTclient.subscribe(BuzzerCommandTopic);                                 // ... and resubscribe
-//      MQTTclient.subscribe(LightCommandTopic);      
-//      MQTTclient.subscribe(ConvFactorCommandTopic); 
-//      MQTTclient.subscribe(IntTimeCommandTopic);       
 
       MQTTclient.publish(iptopic, (WiFi.localIP().toString().c_str()));
     } 
