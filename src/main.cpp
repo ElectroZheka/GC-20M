@@ -63,13 +63,16 @@ char topic[MSG_BUFFER_SIZE];
 char buzzertopic[MSG_BUFFER_SIZE];
 char lighttopic[MSG_BUFFER_SIZE];
 char iptopic[MSG_BUFFER_SIZE];
+char RSSI_Topic[MSG_BUFFER_SIZE];
 char batterytopic[MSG_BUFFER_SIZE];
 char ConvFactorTopic[MSG_BUFFER_SIZE];
+char AlarmThresholdCommandTopic[MSG_BUFFER_SIZE];
 char IntTimeTopic[MSG_BUFFER_SIZE];
 char CommandTopic[MSG_BUFFER_SIZE];
 char BuzzerCommandTopic[MSG_BUFFER_SIZE];
 char LightCommandTopic[MSG_BUFFER_SIZE];
 char ConvFactorCommandTopic[MSG_BUFFER_SIZE];
+char AlarmThresholdTopic[MSG_BUFFER_SIZE];
 char IntTimeCommandTopic[MSG_BUFFER_SIZE];
 char LWTTopic[MSG_BUFFER_SIZE];
 float value = 0;
@@ -126,7 +129,7 @@ int batteryUpdateCounter = 29;
 //=============================================================================================================================
 // EEPROM variables
 const int saveUnits = 0;
-const int saveAlertThreshold = 1;   // Addresses for storing settings data in the EEPROM
+const int saveAlarmThreshold = 1;   // Addresses for storing settings data in the EEPROM
 const int saveCalibration = 2;
 const int saveDeviceMode = 6;
 const int saveLoggingMode = 7;
@@ -215,7 +218,7 @@ void setup()
   #endif
 
   doseUnits = EEPROM.read(saveUnits);                                //Address = 0
-  alarmThreshold = EEPROM.read(saveAlertThreshold);                  //Address = 1
+  alarmThreshold = EEPROM.read(saveAlarmThreshold);                  //Address = 1
   conversionFactor = EEPROMReadlong(saveCalibration);                //Address = 2
   deviceMode = EEPROM.read(saveDeviceMode);                          //Address = 6
   isLogging = EEPROM.read(saveLoggingMode);                          //Address = 7
@@ -278,17 +281,23 @@ void setup()
     Serial.println("====================================");
   #endif
 
+  snprintf (RSSI_Topic, MSG_BUFFER_SIZE, "%s/System/RSSI", MQTTdeviceID );
+  snprintf (batterytopic, MSG_BUFFER_SIZE, "%s/System/Battery", MQTTdeviceID );
+  snprintf (iptopic, MSG_BUFFER_SIZE, "%s/System/IP", MQTTdeviceID );
+
   snprintf (buzzertopic, MSG_BUFFER_SIZE, "%s/System/Buzzer", MQTTdeviceID );
   snprintf (lighttopic, MSG_BUFFER_SIZE, "%s/System/Light", MQTTdeviceID );
-  snprintf (iptopic, MSG_BUFFER_SIZE, "%s/System/IP", MQTTdeviceID );
-  snprintf (batterytopic, MSG_BUFFER_SIZE, "%s/System/Battery", MQTTdeviceID );
+  snprintf (AlarmThresholdTopic, MSG_BUFFER_SIZE, "%s/System/AlarmThreshold", MQTTdeviceID );
   snprintf (ConvFactorTopic, MSG_BUFFER_SIZE, "%s/System/ConversionFactor", MQTTdeviceID );
   snprintf (IntTimeTopic, MSG_BUFFER_SIZE, "%s/System/Integration_Time", MQTTdeviceID );
-  snprintf (CommandTopic, MSG_BUFFER_SIZE, "%s/Control/#", MQTTdeviceID );
+
   snprintf (BuzzerCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Buzzer", MQTTdeviceID );
   snprintf (LightCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Light", MQTTdeviceID );
+  snprintf (AlarmThresholdCommandTopic, MSG_BUFFER_SIZE, "%s/Control/AlarmThreshold", MQTTdeviceID );
   snprintf (ConvFactorCommandTopic, MSG_BUFFER_SIZE, "%s/Control/ConversionFactor", MQTTdeviceID );
   snprintf (IntTimeCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Integration_Time", MQTTdeviceID );
+
+  snprintf (CommandTopic, MSG_BUFFER_SIZE, "%s/Control/#", MQTTdeviceID );
   snprintf (LWTTopic, MSG_BUFFER_SIZE, "%s/System/LWT", MQTTdeviceID );
 
   attachInterrupt(interruptPin, isr, FALLING);
@@ -359,7 +368,7 @@ void setup()
   }
   #if DEBUG_MODE
     Serial.println("Start Up Init Complete. Ready to Go ...");
-    Serial.println("Go!");
+    Serial.println("Go!!!");
   #endif
 } //                                                            void setup()
 //=============================================================================================================================
@@ -412,6 +421,9 @@ MQTTclient.loop();
         #endif
         snprintf (msg, MSG_BUFFER_SIZE, "%i", batteryPercent);
         MQTTclient.publish(batterytopic, msg);
+
+        snprintf (msg, MSG_BUFFER_SIZE, "%i", (WiFi.RSSI()));
+        MQTTclient.publish(RSSI_Topic, msg);
       }
 
       if (MQTTclient.connected() != previousMQTTstatus)
@@ -705,13 +717,11 @@ MQTTclient.loop();
               }
 
               #if DEBUG_MODE && DEBUG_MQTT
-                Serial.print("MQTT: Publish: Topic: ");
-                Serial.print(IntTimeTopic);                                                        
-                Serial.print(": ");
-                Serial.println(value);
+                Serial.println("MQTT: Publish: Topic: " + String(IntTimeTopic) + ": " + (value));
               #endif
-              snprintf (msg, MSG_BUFFER_SIZE, "%f", value);
-              MQTTclient.publish(IntTimeTopic, msg); 
+
+              snprintf (msg, MSG_BUFFER_SIZE, "%i", int(value));
+              MQTTclient.publish(IntTimeTopic, msg, true); 
             }
           } 
         }
@@ -729,24 +739,24 @@ MQTTclient.loop();
           tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 153, ledOnBitmap, 45, 45, ILI9341_WHITE);
               #if DEBUG_MODE && DEBUG_MQTT
-                Serial.print("MQTT: Publish: Topic: ");
-                Serial.print(lighttopic);                                                        
-                Serial.print(": ");
-                Serial.println(true);
+                Serial.println("MQTT: Publish: Topic: " + String(lighttopic) + ": true");
+//                Serial.print(lighttopic);                                                        
+//                Serial.print(": ");
+//                Serial.println(true);
               #endif
-          MQTTclient.publish(lighttopic, "true");          
+          MQTTclient.publish(lighttopic, "true", true);          
         }
         else
         {
           tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 153, ledOffBitmap, 45, 45, ILI9341_WHITE);
               #if DEBUG_MODE && DEBUG_MQTT
-                Serial.print("MQTT: Publish: Topic: ");
-                Serial.print(lighttopic);                                                        
-                Serial.print(": ");
-                Serial.println(false);
+                Serial.println("MQTT: Publish: Topic: " + String(lighttopic) + ": false");
+//                Serial.print(lighttopic);                                                        
+//                Serial.print(": ");
+//                Serial.println(false);
               #endif
-          MQTTclient.publish(lighttopic, "false");
+          MQTTclient.publish(lighttopic, "false", true);
         }
       }
       else if ((x > 190 && x < 238) && (y > 205 && y < 256)) // toggle buzzer
@@ -757,24 +767,24 @@ MQTTclient.loop();
           tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 208, buzzerOnBitmap, 45, 45, ILI9341_WHITE);
               #if DEBUG_MODE && DEBUG_MQTT
-                Serial.print("MQTT: Publish: Topic: ");
-                Serial.print(buzzertopic);                                                        
-                Serial.print(": ");
-                Serial.println(true);
+                Serial.println("MQTT: Publish: Topic: " + String(buzzertopic) + ": true");
+//                Serial.print(buzzertopic);                                                        
+//                Serial.print(": ");
+//                Serial.println("true");
               #endif
-          MQTTclient.publish(buzzertopic, "true");
+          MQTTclient.publish(buzzertopic, "true", true);
         }
         else
         {
           tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 208, buzzerOffBitmap, 45, 45, ILI9341_WHITE);
               #if DEBUG_MODE && DEBUG_MQTT
-                Serial.print("MQTT: Publish: Topic: ");
-                Serial.print(buzzertopic);                                                        
-                Serial.print(": ");
-                Serial.println(false);
+                Serial.println("MQTT: Publish: Topic: " + String(buzzertopic) + ": false");
+//                Serial.print(buzzertopic);                                                        
+//                Serial.print(": ");
+//                Serial.println(false);
               #endif
-          MQTTclient.publish(buzzertopic, "false");
+          MQTTclient.publish(buzzertopic, "false", true);
         }
       }
       else if ((x > 3 && x < 61) && (y > 259 && y < 316)) // settings button pressed
@@ -967,9 +977,9 @@ MQTTclient.loop();
       if ((x > 4 && x < 62) && (y > 271 && y < 315))
       {
         page = 1;
-        if (EEPROM.read(saveAlertThreshold) != alarmThreshold)
+        if (EEPROM.read(saveAlarmThreshold) != alarmThreshold)
         {
-          EEPROM.write(saveAlertThreshold, alarmThreshold);
+          EEPROM.write(saveAlarmThreshold, alarmThreshold);
           EEPROM.commit(); // save to EEPROM to be retrieved at startup
 
           if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to thingspeak every 5 minutes
@@ -983,14 +993,11 @@ MQTTclient.loop();
               if (MQTTclient.connected()) 
               {
                 snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);                             //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                snprintf (topic, MSG_BUFFER_SIZE, "%s/System/AlertThreshold", MQTTdeviceID );
                 #if DEBUG_MODE && DEBUG_MQTT
-                  Serial.print("MQTT: Topic: ");
-                  Serial.print(topic);
-                  Serial.print(": ");
-                  Serial.println(msg);
+//                  Serial.println("MQTT: Topic: "+ String(AlarmThresholdTopic) + (": ") + String(alarmThreshold));
+                  Serial.println("MQTT: Topic: "+ String(AlarmThresholdTopic) + (": ") + msg);
                 #endif
-                MQTTclient.publish(topic, msg); 
+                MQTTclient.publish(AlarmThresholdTopic, msg, true);
               }
             } 
           }
@@ -1056,12 +1063,12 @@ MQTTclient.loop();
               {
                 snprintf (msg, MSG_BUFFER_SIZE, "%i", conversionFactor);        //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 #if DEBUG_MODE && DEBUG_MQTT
-                  Serial.print("MQTT: Topic: ");
-                  Serial.print(ConvFactorTopic);
-                  Serial.print(": ");
-                  Serial.println(msg);
+                  Serial.println("MQTT: Topic: " + String(ConvFactorTopic) + ": " + msg);
+//                  Serial.print(ConvFactorTopic);
+//                  Serial.print(": ");
+//                  Serial.println(msg);
                 #endif
-                MQTTclient.publish(ConvFactorTopic, msg); 
+                MQTTclient.publish(ConvFactorTopic, msg, true); 
               }
             } 
           }
