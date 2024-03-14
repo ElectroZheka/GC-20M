@@ -3,10 +3,14 @@
 
 #include "../settings/settings.h"
 
-long EEPROMReadlong(long address);                        // EEPRON Read
+//long EEPROMReadlong(long address);                        // EEPRON Read
+long EEPROMReadlong(int address);                        // EEPRON Read
+//unsigned int EEPROMReadlong(int address);
 void EEPROMWritelong(int address, long value);            // EEPRON Write
+//void EEPROMWritelong(int address, unsigned int value);           // EEPRON Write
 //=============================================================================================================================
-long EEPROMReadlong(long address) 
+long EEPROMReadlong(int address) 
+//unsigned int EEPROMReadlong(int address)
 { 
   long four = EEPROM.read(address);
   long three = EEPROM.read(address + 1);
@@ -17,6 +21,7 @@ long EEPROMReadlong(long address)
 }
 //=============================================================================================================================
 void EEPROMWritelong(int address, long value) 
+//void EEPROMWritelong(int address, unsigned int value) 
 {
   byte four = (value & 0xFF);
   byte three = ((value >> 8) & 0xFF);
@@ -29,8 +34,6 @@ void EEPROMWritelong(int address, long value)
   EEPROM.write(address + 3, one);
 }
 //=============================================================================================================================
-
-
 //long EEPROMReadlong(long address);
 //void EEPROMWritelong(int address, long value); 
 #endif

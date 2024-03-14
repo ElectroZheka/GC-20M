@@ -146,9 +146,9 @@ void callback(char* topic, byte* payload, unsigned int length)
   {
     if (atoi(messageTemp.c_str()) != int(conversionFactor))
     {
+      conversionFactor = atoi(messageTemp.c_str());
       EEPROMWritelong(saveCalibration, conversionFactor);
       EEPROM.commit();
-      conversionFactor = atoi(messageTemp.c_str());
 
       snprintf (msg, MSG_BUFFER_SIZE, "%i", conversionFactor);
       MQTTclient.publish(ConvFactorTopic, msg);

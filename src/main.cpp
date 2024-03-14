@@ -50,6 +50,7 @@ char MQTTpassword[20];                      //
 int attempts;                               // number of connection attempts when device starts up in monitoring mode
 int MQTTattempts;                           // number of MQTT connection attempts when device starts up in monitoring mode
 bool previousMQTTstatus;
+unsigned int MQTT_DataUpdateTime = 15;      // Интервал отправки данных на MQTT сервер
 
 //String subscr_topic = "EspDosimeter/Control/";
 //String prefix = "EspDosimeter/";
@@ -113,7 +114,9 @@ char dose[5];
 int doseLevel;                       // determines home screen warning signs
 int previousDoseLevel;
 bool doseUnits = 0;                  // 0 = Sievert, 1 = Rem
-unsigned int conversionFactor = 575; //175;
+//unsigned int conversionFactor = 575; //175;
+//unsigned long conversionFactor = 575; //175;
+unsigned long conversionFactor = 575; //175;
 //=============================================================================================================================
 // Touchscreen variable
 XPT2046_Touchscreen ts(CS_PIN);
@@ -140,6 +143,7 @@ const int saveIDLen = 11;
 const int savePortLen = 12;
 const int saveMLoginLen = 13;
 const int saveMPassLen = 14;
+const int saveMQTT_DataUpdateTime = 15;
 //const int saveLedSwitch = 15;
 //const int saveBuzzerSwitch = 16;
 //const int saveIntegrationMode = 17;             // 0 = medium, 1 = fast, 2 == slow;
@@ -229,6 +233,7 @@ void setup()
   MQTTportLength = EEPROM.read(savePortLen);                         //Address = 12
   MQTTloginLength = EEPROM.read(saveMLoginLen);                      //Address = 13
   MQTTpassLength = EEPROM.read(saveMPassLen);                        //Address = 14
+//  MQTT_DataUpdateTime = EEPROM.read(saveMQTT_DataUpdateTime);       //Address = 15
 
   for (int i = 20; i < 20 + SSIDLength; i++)
   {
@@ -386,7 +391,7 @@ MQTTclient.loop();
       previousMillis = currentMillis;
 
       batteryUpdateCounter ++;     
-
+//------------------------------------------------------------------
       if (batteryUpdateCounter == 30){         // update battery level every 30 seconds. Prevents random fluctations of battery level.
 
         batteryUpdateCounter = 0;
@@ -415,17 +420,20 @@ MQTTclient.loop();
 //          Serial.println("BATT: ADC: " + String(batteryInput));
           Serial.println("BATT: " + String(batteryPercent) + "%");
         #endif
+//------------------------------------------------------------------
+        if (MQTTclient.connected())
+        {
+          #if DEBUG_MODE && DEBUG_MQTT
+            Serial.println("MQTT: Publish: Topic: " + String(batterytopic) + ": " + (batteryPercent));
+          #endif
+          snprintf (msg, MSG_BUFFER_SIZE, "%i", batteryPercent);
+          MQTTclient.publish(batterytopic, msg);
 
-        #if DEBUG_MODE && DEBUG_MQTT
-          Serial.println("MQTT: Publish: Topic: " + String(batterytopic) + ": " + (batteryPercent));
-        #endif
-        snprintf (msg, MSG_BUFFER_SIZE, "%i", batteryPercent);
-        MQTTclient.publish(batterytopic, msg);
-
-        snprintf (msg, MSG_BUFFER_SIZE, "%i", (WiFi.RSSI()));
-        MQTTclient.publish(RSSI_Topic, msg);
+          snprintf (msg, MSG_BUFFER_SIZE, "%i", (WiFi.RSSI()));
+          MQTTclient.publish(RSSI_Topic, msg);
+        }
       }
-
+//------------------------------------------------------------------
       if (MQTTclient.connected() != previousMQTTstatus)
       {
         previousMQTTstatus = MQTTclient.connected();
@@ -442,7 +450,7 @@ MQTTclient.loop();
           tft.fillRect(157, 2, 18, 18, ILI9341_BLACK);
         }
       }
-
+//------------------------------------------------------------------ Расчёт
       count[i] = currentCount;
       i++;
       fastCount[j] = currentCount;    // keep concurrent arrays of counts. Use only one depending on user choice
@@ -465,22 +473,24 @@ MQTTclient.loop();
         k = 0;
       }
 
-      if (integrationMode == 2)
+      if (integrationMode == 0)      // 60
+      {
+        averageCount = currentCount - count[i];                                 // count[i] stores the value from 60 seconds ago
+      }
+      else if (integrationMode == 1)           // 5
+      {
+        averageCount = (currentCount - fastCount[j]) * 12;
+      }
+      else if (integrationMode == 2)           // 180
       {
         averageCount = (currentCount - slowCount[k]) / 3;
       }
 
-      if (integrationMode == 1)
-      {
-        averageCount = (currentCount - fastCount[j]) * 12;
-      }
-
-      else if (integrationMode == 0)
-      {
-        averageCount = currentCount - count[i];                                 // count[i] stores the value from 60 seconds ago
-      }
-
       averageCount = ((averageCount) / (1 - 0.00000333 * float(averageCount))); // accounts for dead time of the geiger tube. relevant at high count rates
+
+//        #if DEBUG_MODE
+//          Serial.println("AC: " + String(averageCount) + " CPM");
+//        #endif
 
       if (doseUnits == 0)
       {
@@ -492,16 +502,15 @@ MQTTclient.loop();
         doseRate = averageCount / float(conversionFactor * 10.0);
         totalDose = cumulativeCount / (60 * float(conversionFactor * 10.0)); // 1 mRem == 10 uSv
       }
-
-      if (averageCount < conversionFactor/2)                                 // 0.5 uSv/hr
-        doseLevel = 0;                                                       // determines alert level displayed on homescreen
-      else if (averageCount < alarmThreshold * conversionFactor)
-        doseLevel = 1;
-      else
-        doseLevel = 2;
-
-
-      if (doseRate != previousdoseRate)
+      tft.setFont();
+      tft.setTextSize(2);
+      tft.setTextColor(ILI9341_WHITE, 0x630C);
+      tft.setCursor(80, 192);
+      tft.println(cumulativeCount);                               // display total counts since reset
+      tft.setCursor(80, 222);
+      tft.println(totalDose);                                     // display cumulative dose
+//------------------------------------------------------------------
+      if (doseRate != previousdoseRate)                           // Вывод на дисплей doserate
       {
         previousdoseRate = doseRate;
         if (doseRate < 10.0)
@@ -525,10 +534,13 @@ MQTTclient.loop();
         tft.setTextSize(5);
         tft.setTextColor(ILI9341_WHITE, DOSEBACKGROUND);
         tft.println(dose);                                        // display effective dose rate
-//        tft.setTextSize(1);
-      }
 
-      if (averageCount != previousaverageCount)
+//        #if DEBUG_MODE
+//          Serial.println("Dose: " + String(dose));
+//        #endif
+      }
+//------------------------------------------------------------------
+      if (averageCount != previousaverageCount)                   // Вывод на дисплей
       {      
         previousaverageCount = averageCount;
         tft.setFont();
@@ -558,14 +570,13 @@ MQTTclient.loop();
           tft.fillRect(160, 120, 74, 25, ILI9341_BLACK);
         }
       }
-
-      tft.setFont();
-      tft.setTextSize(2);
-      tft.setTextColor(ILI9341_WHITE, 0x630C);
-      tft.setCursor(80, 192);
-      tft.println(cumulativeCount);                             // display total counts since reset
-      tft.setCursor(80, 222);
-      tft.println(totalDose);                                   // display cumulative dose
+//------------------------------------------------------------------
+      if (averageCount < conversionFactor/2)                                 // 0.5 uSv/hr
+        doseLevel = 0;                                                       // determines alert level displayed on homescreen
+      else if (averageCount < alarmThreshold * conversionFactor)
+        doseLevel = 1;
+      else
+        doseLevel = 2;
 
       if (doseLevel != previousDoseLevel)                       // only update alert level if it changed. This prevents flicker
       {
@@ -796,7 +807,8 @@ MQTTclient.loop();
     if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to mqtt every 15 sec    Сделать управляемый интервал
     {
       currentUploadTime = millis();
-      if ((currentUploadTime - previousUploadTime) > 15000)
+//      if ((currentUploadTime - previousUploadTime) > 15000)
+      if ((currentUploadTime - previousUploadTime) > (MQTT_DataUpdateTime*1000))
       {
         previousUploadTime = currentUploadTime;
         if (WiFi.status() == WL_CONNECTED)
@@ -1046,7 +1058,8 @@ MQTTclient.loop();
       if ((x > 4 && x < 62) && (y > 271 && y < 315))
       {
         page = 1;
-        if (uint32(EEPROMReadlong(saveCalibration)) != conversionFactor)
+//        if (uint32(EEPROMReadlong(saveCalibration)) != conversionFactor)
+        if ((EEPROMReadlong(saveCalibration)) != conversionFactor)
         {
           EEPROMWritelong(saveCalibration, conversionFactor);
           EEPROM.commit();
@@ -1061,12 +1074,12 @@ MQTTclient.loop();
               }
               if (MQTTclient.connected()) 
               {
-                snprintf (msg, MSG_BUFFER_SIZE, "%i", conversionFactor);        //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                snprintf (msg, MSG_BUFFER_SIZE, "%u", conversionFactor);        //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//                snprintf (msg, MSG_BUFFER_SIZE, (conversionFactor.c_str()));
+             //   snprintf (msg, MSG_BUFFER_SIZE, l,conversionFactor);        //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 #if DEBUG_MODE && DEBUG_MQTT
-                  Serial.println("MQTT: Topic: " + String(ConvFactorTopic) + ": " + msg);
-//                  Serial.print(ConvFactorTopic);
-//                  Serial.print(": ");
-//                  Serial.println(msg);
+                    Serial.println("MQTT: Topic: " + String(ConvFactorTopic) + ": " + conversionFactor);
+//                  Serial.println("MQTT: Topic: " + String(ConvFactorTopic) + ": " + msg);
                 #endif
                 MQTTclient.publish(ConvFactorTopic, msg, true); 
               }
