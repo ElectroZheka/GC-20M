@@ -28,6 +28,19 @@ void MQTTreconnect()
       MQTTclient.publish(iptopic, (WiFi.localIP().toString().c_str()), true);
       snprintf (msg, MSG_BUFFER_SIZE, "%i", (WiFi.RSSI()));
       MQTTclient.publish(RSSI_Topic, msg);
+
+      snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);                             
+      #if DEBUG_MODE && DEBUG_MQTT
+        Serial.println("MQTT: Publish: Topic: "+ String(AlarmThresholdTopic) + (": ") + msg);
+      #endif
+      MQTTclient.publish(AlarmThresholdTopic, msg, true);
+
+      #if DEBUG_MODE && DEBUG_MQTT
+        Serial.println("MQTT: Publish: Topic: " + String(buzzertopic) + ": " + buzzerSwitch);
+      #endif
+      MQTTclient.publish(buzzertopic, "true", true);
+
+
     } 
     else 
     {
