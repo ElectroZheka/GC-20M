@@ -179,9 +179,8 @@ void IRAM_ATTR isr() // interrupt service routine
   {   
     currentCount++;
     cumulativeCount++;
-    previousIntMicros = micros();
   }
-//  previousIntMicros = micros();
+  previousIntMicros = micros();
 }
 //=============================================================================================================================
 //=============================================================================================================================
