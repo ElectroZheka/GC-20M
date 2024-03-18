@@ -175,12 +175,12 @@ void isr();
 //=============================================================================================================================
 void IRAM_ATTR isr() // interrupt service routine
 {
-//  if ((micros() - Dead_Time_Geiger) > previousIntMicros) 
-//  {   
+  if ((micros() - Dead_Time_Geiger) > previousIntMicros) 
+  {   
     currentCount++;
     cumulativeCount++;
-    //previousIntMicros = micros();
-//  }
+    previousIntMicros = micros();
+  }
 //  previousIntMicros = micros();
 }
 //=============================================================================================================================
