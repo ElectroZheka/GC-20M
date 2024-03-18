@@ -81,9 +81,9 @@ float value = 0;
 // Display variable
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 
-long count[61];
-long fastCount[6];                   // arrays to store running counts
-long slowCount[181];
+unsigned long count[61];
+unsigned long fastCount[6];                   // arrays to store running counts
+unsigned long slowCount[181];
 int i = 0;                           // array elements
 int j = 0;
 int k = 0;
@@ -115,7 +115,7 @@ int doseLevel;                       // determines home screen warning signs
 int previousDoseLevel;
 bool doseUnits = 0;                  // 0 = Sievert, 1 = Rem
 //unsigned int conversionFactor = 575; //175;
-//unsigned long conversionFactor = 575; //175;
+//long conversionFactor = 575; //175;
 unsigned long conversionFactor = 575; //175;
 //=============================================================================================================================
 // Touchscreen variable
@@ -175,13 +175,13 @@ void isr();
 //=============================================================================================================================
 void IRAM_ATTR isr() // interrupt service routine
 {
-  if ((micros() - Dead_Time_Geiger) > previousIntMicros) 
-  {            
+//  if ((micros() - Dead_Time_Geiger) > previousIntMicros) 
+//  {   
     currentCount++;
     cumulativeCount++;
     //previousIntMicros = micros();
-  }
-  previousIntMicros = micros();
+//  }
+//  previousIntMicros = micros();
 }
 //=============================================================================================================================
 //=============================================================================================================================
@@ -314,9 +314,12 @@ void setup()
     #if DEBUG_MODE
       Serial.println("CG-20M in Portable Dosimeter Mode.");
     #endif
-    WiFi.mode( WIFI_OFF );                                     // turn off wifi
-    WiFi.forceSleepBegin();
-    delay(1);
+//    WiFi.mode( WIFI_OFF );                                     // turn off wifi
+//    WiFi.forceSleepBegin();
+//    delay(1);
+
+    WiFi.setSleepMode(WIFI_MODEM_SLEEP);
+    WiFi.forceSleepBegin(); delay(1);
   }
   else
   {
@@ -641,6 +644,7 @@ MQTTclient.loop();
     //---------------------------------------------------------------------------------
     if (!ts.touched())
       wasTouched = 0;
+
     if (ts.touched() && !wasTouched) // A way of "debouncing" the touchscreen. Prevents multiple inputs from single touch
     {
       wasTouched = 1;
@@ -875,7 +879,7 @@ MQTTclient.loop();
         previousCount = 0;
         for (int a = 0; a < 61; a++)
         {
-          count[a] = 0; // counts need to be reset to prevent errorenous readings
+          count[a] = 0;                // counts need to be reset to prevent errorenous readings
         }
         for (int b = 0; b < 6; b++)
         {
@@ -885,6 +889,7 @@ MQTTclient.loop();
         {
           slowCount[c] = 0;
         }
+
         page = 0;
         drawHomePage();
       }
@@ -1059,7 +1064,7 @@ MQTTclient.loop();
       {
         page = 1;
 //        if (uint32(EEPROMReadlong(saveCalibration)) != conversionFactor)
-        if ((EEPROMReadlong(saveCalibration)) != conversionFactor)
+        if ((EEPROMReadlong(saveCalibration)) != long(conversionFactor))
         {
           EEPROMWritelong(saveCalibration, conversionFactor);
           EEPROM.commit();
@@ -1074,9 +1079,8 @@ MQTTclient.loop();
               }
               if (MQTTclient.connected()) 
               {
-                snprintf (msg, MSG_BUFFER_SIZE, "%u", conversionFactor);        //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                snprintf (msg, MSG_BUFFER_SIZE, "%li", conversionFactor);        //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 //                snprintf (msg, MSG_BUFFER_SIZE, (conversionFactor.c_str()));
-             //   snprintf (msg, MSG_BUFFER_SIZE, l,conversionFactor);        //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 #if DEBUG_MODE && DEBUG_MQTT
                     Serial.println("MQTT: Topic: " + String(ConvFactorTopic) + ": " + conversionFactor);
 //                  Serial.println("MQTT: Topic: " + String(ConvFactorTopic) + ": " + msg);

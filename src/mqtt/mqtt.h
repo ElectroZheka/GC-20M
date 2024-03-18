@@ -163,7 +163,7 @@ void callback(char* topic, byte* payload, unsigned int length)
       EEPROMWritelong(saveCalibration, conversionFactor);
       EEPROM.commit();
 
-      snprintf (msg, MSG_BUFFER_SIZE, "%i", conversionFactor);
+      snprintf (msg, MSG_BUFFER_SIZE, "%li", conversionFactor);
       MQTTclient.publish(ConvFactorTopic, msg);
 
       #if DEBUG_MODE && DEBUG_MQTT

@@ -23,7 +23,7 @@
 
 #define BATT_PIN A0           // ADC Battery input Pin
 
-#define TFT_DC D4
+#define TFT_DC D4             // + builtin led
 #define TFT_CS D8
 
 #define BLACK 0x0000
