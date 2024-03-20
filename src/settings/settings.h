@@ -46,7 +46,7 @@
 #define TS_MAXX 3300
 #define TS_MAXY 3700
 
-#define Dead_Time_Geiger 150  // Dead time Geiger senson in mS 
+#define Dead_Time_Geiger 150  // Dead time Geiger sensor in uS 
 
 #define MSG_BUFFER_SIZE	(50)
 

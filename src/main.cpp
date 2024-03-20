@@ -21,6 +21,7 @@
 #include <PubSubClient.h>
 #include "settings/settings.h"
 #include "Bitmap/Bitmap.h"
+#include "battery/battery.h"
 
 //#include "FontsRus/FreeSans9pt7b.h"
 //#include "FontsRus/FreeSans12pt7b.h"
@@ -67,6 +68,8 @@ char iptopic[MSG_BUFFER_SIZE];
 char RSSI_Topic[MSG_BUFFER_SIZE];
 char batterytopic[MSG_BUFFER_SIZE];
 char ConvFactorTopic[MSG_BUFFER_SIZE];
+char DoserateTopic[MSG_BUFFER_SIZE];
+char DoseLevelTopic[MSG_BUFFER_SIZE];
 char AlarmThresholdCommandTopic[MSG_BUFFER_SIZE];
 char IntTimeTopic[MSG_BUFFER_SIZE];
 char CommandTopic[MSG_BUFFER_SIZE];
@@ -116,7 +119,7 @@ int previousDoseLevel;
 bool doseUnits = 0;                  // 0 = Sievert, 1 = Rem
 //unsigned int conversionFactor = 575; //175;
 //long conversionFactor = 575; //175;
-unsigned long conversionFactor = 575; //175;
+unsigned long conversionFactor = 525; //175;
 //=============================================================================================================================
 // Touchscreen variable
 XPT2046_Touchscreen ts(CS_PIN);
@@ -124,7 +127,9 @@ bool wasTouched;
 int x, y;                           // touch points
 //=============================================================================================================================
 // Battery indicator variables
-int batteryInput;
+//int batteryInput;
+//unsigned int batteryInput;
+//float batteryVoltage;
 int batteryPercent;
 int previousbatteryPercent = 150;    // >100 for first update display when boot
 int batteryMapped = 212;            // pixel location of battery icon
@@ -193,8 +198,8 @@ void setup()
    
   Serial.begin(DEBUG_BAUD);
 
-  delay(500);
-
+  delay(100);
+ 
   #if DEBUG_MODE
     Serial.println(" ");
     Serial.println(" ");
@@ -295,6 +300,9 @@ void setup()
   snprintf (ConvFactorTopic, MSG_BUFFER_SIZE, "%s/System/ConversionFactor", MQTTdeviceID );
   snprintf (IntTimeTopic, MSG_BUFFER_SIZE, "%s/System/Integration_Time", MQTTdeviceID );
 
+  snprintf (DoserateTopic, MSG_BUFFER_SIZE, "%s/Doserate/uSv_hr", MQTTdeviceID );
+  snprintf (DoseLevelTopic, MSG_BUFFER_SIZE, "%s/Doserate/DoseLevel", MQTTdeviceID );
+
   snprintf (BuzzerCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Buzzer", MQTTdeviceID );
   snprintf (LightCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Light", MQTTdeviceID );
   snprintf (AlarmThresholdCommandTopic, MSG_BUFFER_SIZE, "%s/Control/AlarmThreshold", MQTTdeviceID );
@@ -394,13 +402,11 @@ MQTTclient.loop();
 
       batteryUpdateCounter ++;     
 //------------------------------------------------------------------
-      if (batteryUpdateCounter == 30){         // update battery level every 30 seconds. Prevents random fluctations of battery level.
-
+      if (batteryUpdateCounter == 60)          // update battery level every 30 seconds. Prevents random fluctations of battery level.
+      {
         batteryUpdateCounter = 0;
 
-        batteryInput = analogRead(BATT_PIN);
-        batteryInput = constrain(batteryInput, 590, 800);
-        batteryPercent = map(batteryInput, 590, 800, 0, 100);
+        batteryPercent = getPercent();
 
         if (batteryPercent != previousbatteryPercent)
         {
@@ -417,16 +423,11 @@ MQTTclient.loop();
             tft.fillRect(batteryMapped, 6, (234 - batteryMapped), 10, ILI9341_GREEN); // draws battery icon
           }
         }
-
-        #if DEBUG_MODE && DEBUG_BATT
-//          Serial.println("BATT: ADC: " + String(batteryInput));
-          Serial.println("BATT: " + String(batteryPercent) + "%");
-        #endif
 //------------------------------------------------------------------
         if (MQTTclient.connected())
         {
           #if DEBUG_MODE && DEBUG_MQTT
-            Serial.println("MQTT: Publish: Topic: " + String(batterytopic) + ": " + (batteryPercent));
+            Serial.println("MQTT >: " + String(batterytopic) + ": " + (batteryPercent));
           #endif
           snprintf (msg, MSG_BUFFER_SIZE, "%i", batteryPercent);
           MQTTclient.publish(batterytopic, msg);
@@ -731,7 +732,7 @@ MQTTclient.loop();
               }
 
               #if DEBUG_MODE && DEBUG_MQTT
-                Serial.println("MQTT: Publish: Topic: " + String(IntTimeTopic) + ": " + (value));
+                Serial.println("MQTT >: " + String(IntTimeTopic) + ": " + (value));
               #endif
 
               snprintf (msg, MSG_BUFFER_SIZE, "%i", int(value));
@@ -753,10 +754,7 @@ MQTTclient.loop();
           tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 153, ledOnBitmap, 45, 45, ILI9341_WHITE);
               #if DEBUG_MODE && DEBUG_MQTT
-                Serial.println("MQTT: Publish: Topic: " + String(lighttopic) + ": true");
-//                Serial.print(lighttopic);                                                        
-//                Serial.print(": ");
-//                Serial.println(true);
+                Serial.println("MQTT >: " + String(lighttopic) + ": true");
               #endif
           MQTTclient.publish(lighttopic, "true", true);          
         }
@@ -765,10 +763,7 @@ MQTTclient.loop();
           tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 153, ledOffBitmap, 45, 45, ILI9341_WHITE);
               #if DEBUG_MODE && DEBUG_MQTT
-                Serial.println("MQTT: Publish: Topic: " + String(lighttopic) + ": false");
-//                Serial.print(lighttopic);                                                        
-//                Serial.print(": ");
-//                Serial.println(false);
+                Serial.println("MQTT >: " + String(lighttopic) + ": false");
               #endif
           MQTTclient.publish(lighttopic, "false", true);
         }
@@ -781,10 +776,7 @@ MQTTclient.loop();
           tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 208, buzzerOnBitmap, 45, 45, ILI9341_WHITE);
               #if DEBUG_MODE && DEBUG_MQTT
-                Serial.println("MQTT: Publish: Topic: " + String(buzzertopic) + ": true");
-//                Serial.print(buzzertopic);                                                        
-//                Serial.print(": ");
-//                Serial.println("true");
+                Serial.println("MQTT >: " + String(buzzertopic) + ": true");
               #endif
           MQTTclient.publish(buzzertopic, "true", true);
         }
@@ -793,10 +785,7 @@ MQTTclient.loop();
           tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 208, buzzerOffBitmap, 45, 45, ILI9341_WHITE);
               #if DEBUG_MODE && DEBUG_MQTT
-                Serial.println("MQTT: Publish: Topic: " + String(buzzertopic) + ": false");
-//                Serial.print(buzzertopic);                                                        
-//                Serial.print(": ");
-//                Serial.println(false);
+                Serial.println("MQTT >: " + String(buzzertopic) + ": false");
               #endif
           MQTTclient.publish(buzzertopic, "false", true);
         }
@@ -810,7 +799,7 @@ MQTTclient.loop();
     if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to mqtt every 15 sec    Сделать управляемый интервал
     {
       currentUploadTime = millis();
-//      if ((currentUploadTime - previousUploadTime) > 15000)
+
       if ((currentUploadTime - previousUploadTime) > (MQTT_DataUpdateTime*1000))
       {
         previousUploadTime = currentUploadTime;
@@ -822,15 +811,12 @@ MQTTclient.loop();
           }
           if (MQTTclient.connected()) 
           {
-            value = doseRate;
-            snprintf (msg, MSG_BUFFER_SIZE, "DoseRate: %fuSv/hr", value);
+
             #if DEBUG_MODE && DEBUG_MQTT
-              Serial.print("MQTT: ");
-              Serial.println(msg);
+              Serial.println("MQTT >: DoseRate: " + String(doseRate) + " uSv/hr");
             #endif
-            snprintf (msg, MSG_BUFFER_SIZE, "%f", value);
-            snprintf (topic, MSG_BUFFER_SIZE, "%s/Doserate/uSv_hr", MQTTdeviceID );
-            MQTTclient.publish(topic, msg);
+            snprintf (msg, MSG_BUFFER_SIZE, "%f", doseRate);
+            MQTTclient.publish(DoserateTopic, msg);
 
             if (doseLevel == 0)
             {
@@ -844,12 +830,13 @@ MQTTclient.loop();
             {
               snprintf (msg, MSG_BUFFER_SIZE, "HIGH RADIATION LEVEL");
             }
+
             #if DEBUG_MODE && DEBUG_MQTT
-              Serial.print("MQTT: DoseLevel: ");
+              Serial.print("MQTT >: DoseLevel: ");
               Serial.println(msg);
             #endif
-            snprintf (topic, MSG_BUFFER_SIZE, "%s/Doserate/DoseLevel", MQTTdeviceID );
-            MQTTclient.publish(topic, msg);
+
+            MQTTclient.publish(DoseLevelTopic, msg);
           }
         } 
       }
@@ -1010,8 +997,8 @@ MQTTclient.loop();
               {
                 snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);                             //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 #if DEBUG_MODE && DEBUG_MQTT
-//                  Serial.println("MQTT: Topic: "+ String(AlarmThresholdTopic) + (": ") + String(alarmThreshold));
-                  Serial.println("MQTT: Topic: "+ String(AlarmThresholdTopic) + (": ") + msg);
+                  //Serial.println("MQTT: Topic: "+ String(AlarmThresholdTopic) + (": ") + String(alarmThreshold));
+                  Serial.println("MQTT >: "+ String(AlarmThresholdTopic) + (": ") + msg);
                 #endif
                 MQTTclient.publish(AlarmThresholdTopic, msg, true);
               }
@@ -1062,7 +1049,6 @@ MQTTclient.loop();
       if ((x > 4 && x < 62) && (y > 271 && y < 315))
       {
         page = 1;
-//        if (uint32(EEPROMReadlong(saveCalibration)) != conversionFactor)
         if ((EEPROMReadlong(saveCalibration)) != long(conversionFactor))
         {
           EEPROMWritelong(saveCalibration, conversionFactor);
@@ -1081,7 +1067,7 @@ MQTTclient.loop();
                 snprintf (msg, MSG_BUFFER_SIZE, "%li", conversionFactor);        //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 //                snprintf (msg, MSG_BUFFER_SIZE, (conversionFactor.c_str()));
                 #if DEBUG_MODE && DEBUG_MQTT
-                    Serial.println("MQTT: Topic: " + String(ConvFactorTopic) + ": " + conversionFactor);
+                    Serial.println("MQTT >: " + String(ConvFactorTopic) + ": " + conversionFactor);
 //                  Serial.println("MQTT: Topic: " + String(ConvFactorTopic) + ": " + msg);
                 #endif
                 MQTTclient.publish(ConvFactorTopic, msg, true); 
@@ -1168,12 +1154,12 @@ MQTTclient.loop();
         tft.println("MQTT device ID");
 
         #if DEBUG_MODE 
-          Serial.println("====================================");
+          Serial.println("==================================================================");
           Serial.println("WIFI AP: Change Mode to AP");
           Serial.println("WIFI AP: Connect to AP GC-20M and browse to IP adress 192.168.4.1.");
           Serial.println("WIFI AP: Enter credentials of your WiFi network and"); 
           Serial.println("WIFI AP: the IP address MQTT server and write MQTT device ID");
-          Serial.println("====================================");
+          Serial.println("==================================================================");
         #endif
 
         WiFiManager wifiManager;

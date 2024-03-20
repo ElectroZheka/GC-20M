@@ -14,7 +14,6 @@ void MQTTreconnect()
 
     String clientId = String(MQTTdeviceID);
 
-//    if (MQTTclient.connect(clientId.c_str(), MQTTlogin, MQTTpassword))    // Attempt to connect
     if (MQTTclient.connect(clientId.c_str(), MQTTlogin, MQTTpassword, LWTTopic, 0, false, "Offline", true))    // Attempt to connect
     {                                                          
       MQTTclient.publish(LWTTopic, "Online");
@@ -31,16 +30,34 @@ void MQTTreconnect()
 
       snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);                             
       #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT: Publish: Topic: "+ String(AlarmThresholdTopic) + (": ") + msg);
+        Serial.println("MQTT >: "+ String(AlarmThresholdTopic) + (": ") + msg);
       #endif
       MQTTclient.publish(AlarmThresholdTopic, msg, true);
 
       #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT: Publish: Topic: " + String(buzzertopic) + ": " + buzzerSwitch);
+        Serial.println("MQTT >: " + String(buzzertopic) + ": " + buzzerSwitch);
       #endif
-      MQTTclient.publish(buzzertopic, "true", true);
+      if (buzzerSwitch)
+      {
+      //  MQTTclient.publish(lighttopic, ((char)buzzerSwitch), true);
+        MQTTclient.publish(lighttopic, "true", true);
+      }
+      else
+      {
+        MQTTclient.publish(lighttopic, "false", true);
+      }
 
-
+      #if DEBUG_MODE && DEBUG_MQTT
+        Serial.println("MQTT >: " + String(lighttopic) + ": " + ledSwitch);
+      #endif
+      if (ledSwitch)
+      {
+        MQTTclient.publish(lighttopic, "true", true);
+      }
+      else
+      {
+        MQTTclient.publish(lighttopic, "false", true);
+      }
     } 
     else 
     {
@@ -57,7 +74,7 @@ void MQTTreconnect()
 void callback(char* topic, byte* payload, unsigned int length)
 {
   #if DEBUG_MODE && DEBUG_MQTT
-    Serial.print("MQTT: Message arrived [");
+    Serial.print("MQTT <: [");
     Serial.print(topic);
     Serial.print("] [");
   #endif
