@@ -51,6 +51,7 @@ char MQTTpassword[20];                      //
 int attempts;                               // number of connection attempts when device starts up in monitoring mode
 int MQTTattempts;                           // number of MQTT connection attempts when device starts up in monitoring mode
 bool previousMQTTstatus;
+bool MQTTsend;                              // Флаг возможности отправки на MQTT сервер
 unsigned int MQTT_DataUpdateTime = 15;      // Интервал отправки данных на MQTT сервер
 
 //String subscr_topic = "EspDosimeter/Control/";
@@ -203,7 +204,7 @@ void setup()
   #if DEBUG_MODE
     Serial.println(" ");
     Serial.println(" ");
-    Serial.println("====================================");
+    Serial.println("==================================================================");
     Serial.println("GC-20M Starting...");
   #endif
 
@@ -287,7 +288,7 @@ void setup()
     Serial.println("M Port: "+ String(MQTTport) + " Length: "+ String(MQTTportLength));
     Serial.println("M Login: "+ String(MQTTlogin) + " Length: "+ String(MQTTloginLength));
     Serial.println("M Pass: "+ String(MQTTpassword) + " Length: "+ String(MQTTpassLength));    
-    Serial.println("====================================");
+    Serial.println("==================================================================");
   #endif
 
   snprintf (RSSI_Topic, MSG_BUFFER_SIZE, "%s/System/RSSI", MQTTdeviceID );
@@ -321,12 +322,12 @@ void setup()
     #if DEBUG_MODE
       Serial.println("CG-20M in Portable Dosimeter Mode.");
     #endif
-//    WiFi.mode( WIFI_OFF );                                     // turn off wifi
-//    WiFi.forceSleepBegin();
-//    delay(1);
 
+//    WiFi.mode( WIFI_OFF );                                     // turn off wifi
     WiFi.setSleepMode(WIFI_MODEM_SLEEP);
-    WiFi.forceSleepBegin(); delay(1);
+    WiFi.forceSleepBegin(); 
+//    delay(1);
+    MQTTsend = 0;
   }
   else
   {
@@ -396,13 +397,13 @@ MQTTclient.loop();
   if (page == 0)                                                // homepage
   {
     currentMillis = millis();
-    if (currentMillis - previousMillis >= 1000)
+    if (currentMillis - previousMillis >= 1000)                                       // 1 Second timer
     {
       previousMillis = currentMillis;
 
-      batteryUpdateCounter ++;     
+      batteryUpdateCounter ++;   
 //------------------------------------------------------------------
-      if (batteryUpdateCounter == 60)          // update battery level every 30 seconds. Prevents random fluctations of battery level.
+      if (batteryUpdateCounter >= 61)                                                 // update battery level and RSSI every XX seconds. 60 
       {
         batteryUpdateCounter = 0;
 
@@ -423,8 +424,8 @@ MQTTclient.loop();
             tft.fillRect(batteryMapped, 6, (234 - batteryMapped), 10, ILI9341_GREEN); // draws battery icon
           }
         }
-//------------------------------------------------------------------
-        if (MQTTclient.connected())
+
+        if (MQTTsend)
         {
           #if DEBUG_MODE && DEBUG_MQTT
             Serial.println("MQTT >: " + String(batterytopic) + ": " + (batteryPercent));
@@ -462,38 +463,31 @@ MQTTclient.loop();
       k++;
 
       if (i == 61)
-      {
         i = 0;
-      }
 
       if (j == 6)
-      {
         j = 0;
-      }
 
       if (k == 181)
-      {
         k = 0;
-      }
 
-      if (integrationMode == 0)      // 60
+      switch(integrationMode)
       {
-        averageCount = currentCount - count[i];                                 // count[i] stores the value from 60 seconds ago
+        case 0: // 60
+          averageCount = currentCount - count[i];                                 // count[i] stores the value from 60 seconds ago
+        case 1: // 5
+          averageCount = (currentCount - fastCount[j]) * 12;
+        case 2: // 180
+          averageCount = (currentCount - slowCount[k]) / 3;
+        default:
+          break;
       }
-      else if (integrationMode == 1)           // 5
-      {
-        averageCount = (currentCount - fastCount[j]) * 12;
-      }
-      else if (integrationMode == 2)           // 180
-      {
-        averageCount = (currentCount - slowCount[k]) / 3;
-      }
-
-      averageCount = ((averageCount) / (1 - 0.00000333 * float(averageCount))); // accounts for dead time of the geiger tube. relevant at high count rates
+      averageCount = ((averageCount) / (1 - 0.00000333 * float(averageCount)));  // accounts for dead time of the geiger tube. relevant at high count rates
 
 //        #if DEBUG_MODE
 //          Serial.println("AC: " + String(averageCount) + " CPM");
 //        #endif
+
 
       if (doseUnits == 0)
       {
@@ -517,20 +511,13 @@ MQTTclient.loop();
       {
         previousdoseRate = doseRate;
         if (doseRate < 10.0)
-        {
           dtostrf(doseRate, 4, 2, dose);                          // display two digits after the decimal point if value is less than 10
-        }
         else if ((doseRate >= 10) && (doseRate < 100))
-        {
           dtostrf(doseRate, 4, 1, dose);                          // display one digit after decimal point when dose is greater than 10
-        }
         else if ((doseRate >= 100))
-        {
           dtostrf(doseRate, 4, 0, dose);                          // whole numbers only when dose is higher than 100
-        }
-        else {
+        else 
           dtostrf(doseRate, 4, 0, dose);                          // covers the rare edge case where the dose rate is sometimes errorenously calculated to be negative
-        }
       
         tft.setFont();
         tft.setCursor(44, 52);
@@ -583,39 +570,40 @@ MQTTclient.loop();
 
       if (doseLevel != previousDoseLevel)                       // only update alert level if it changed. This prevents flicker
       {
-        if (doseLevel == 0)
+        switch(doseLevel)
         {
-          tft.drawRect(0, 0, tft.width(), tft.height(), ILI9341_WHITE);
-          tft.fillRoundRect(3, 94, 234, 21, 3, 0x2DC6);
-          tft.setCursor(15, 104);
-          tft.setFont(&FreeSans9pt7b);
-          tft.setTextColor(ILI9341_WHITE);
-          tft.setTextSize(1);
-          tft.println("NORMAL BACKGROUND");
-        }
-        else if (doseLevel == 1)
-        {
-          tft.drawRect(0, 0, tft.width(), tft.height(), ILI9341_WHITE);
-          tft.fillRoundRect(3, 94, 234, 21, 3, 0xCE40);
-          tft.setCursor(29, 104);
-          tft.setFont(&FreeSans9pt7b);
-          tft.setTextColor(ILI9341_WHITE);
-          tft.setTextSize(1);
-          tft.println("ELEVATED ACTIVITY");
-        }
-        else if (doseLevel == 2)
-        {
-          tft.drawRect(0, 0, tft.width(), tft.height(), ILI9341_RED);
-          tft.fillRoundRect(3, 94, 234, 21, 3, 0xB8A2);
-          tft.setCursor(17, 104);
-          tft.setFont(&FreeSans9pt7b);
-          tft.setTextColor(ILI9341_WHITE);
-          tft.setTextSize(1);
-          tft.println("HIGH RADIATION LEVEL");
+          case 0:
+            tft.drawRect(0, 0, tft.width(), tft.height(), ILI9341_WHITE);
+            tft.fillRoundRect(3, 94, 234, 21, 3, 0x2DC6);
+            tft.setCursor(15, 104);
+            tft.setFont(&FreeSans9pt7b);
+            tft.setTextColor(ILI9341_WHITE);
+            tft.setTextSize(1);
+            tft.println("NORMAL BACKGROUND");
+            break;
+          case 1:
+            tft.drawRect(0, 0, tft.width(), tft.height(), ILI9341_WHITE);
+            tft.fillRoundRect(3, 94, 234, 21, 3, 0xCE40);
+            tft.setCursor(29, 104);
+            tft.setFont(&FreeSans9pt7b);
+            tft.setTextColor(ILI9341_WHITE);
+            tft.setTextSize(1);
+            tft.println("ELEVATED ACTIVITY");
+            break;
+          case 2:
+            tft.drawRect(0, 0, tft.width(), tft.height(), ILI9341_RED);
+            tft.fillRoundRect(3, 94, 234, 21, 3, 0xB8A2);
+            tft.setCursor(17, 104);
+            tft.setFont(&FreeSans9pt7b);
+            tft.setTextColor(ILI9341_WHITE);
+            tft.setTextSize(1);
+            tft.println("HIGH RADIATION LEVEL");          
+            break;
+          default:
+            break;
         }
         previousDoseLevel = doseLevel;
       }
-      //Serial.println(currentCount);
     } 
     // end of millis()-controlled block that runs once every second. The rest of the code on page 0 runs every loop
 //----------------------------------------------------------------------------------
@@ -625,17 +613,14 @@ MQTTclient.loop();
       previousCount = currentCount;
       previousMicros = micros();                   // Начинаем отсчёт одновибратора      
       if (ledSwitch)
-      {
         digitalWrite(ACT_LED, HIGH);               // trigger buzzer and led if they are activated
-      } 
-      if (buzzerSwitch){
+      if (buzzerSwitch)
         digitalWrite(BUZZER_PIN, HIGH);
-      }  
     }
 
     currentMicros = micros();
 
-    if (currentMicros - previousMicros >= 200)
+    if (currentMicros - previousMicros >= 500)     // если таймёр превышен, выключаем светодиод и пищалку
     {
       digitalWrite(ACT_LED, LOW);                  // LED off
       digitalWrite(BUZZER_PIN, LOW);               // Buzzer off
@@ -645,11 +630,11 @@ MQTTclient.loop();
     if (!ts.touched())
       wasTouched = 0;
 
-    if (ts.touched() && !wasTouched) // A way of "debouncing" the touchscreen. Prevents multiple inputs from single touch
+    if (ts.touched() && !wasTouched)            // A way of "debouncing" the touchscreen. Prevents multiple inputs from single touch
     {
       wasTouched = 1;
       TS_Point p = ts.getPoint();
-      x = map(p.x, TS_MINX, TS_MAXX, 240, 0); // get touch point and map to screen pixels
+      x = map(p.x, TS_MINX, TS_MAXX, 240, 0);   // get touch point and map to screen pixels
       y = map(p.y, TS_MINY, TS_MAXY, 320, 0);
 
       #if DEBUG_MODE && DEBUG_TS
@@ -661,12 +646,11 @@ MQTTclient.loop();
       {
         integrationMode ++;
         if (integrationMode == 3)
-        {
           integrationMode = 0;
-        }
-        currentCount = 0;
+
+        currentCount = 0;                     // reset counts and arrays when integration speed is changed
         previousCount = 0;
-        for (int a = 0; a < 61; a++) // reset counts when integretation speed is changed
+        for (int a = 0; a < 61; a++) 
         {
           count[a] = 0;
         }
@@ -678,68 +662,43 @@ MQTTclient.loop();
         {
           slowCount[c] = 0;
         }
-        if (integrationMode == 0) // change button based on touch and previous state
-        {
-          tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
-          tft.setFont(&FreeSans12pt7b);
-          tft.setTextSize(1);
-          tft.setCursor(180, 283);
-          tft.println("INT");
-          tft.setCursor(177, 309);
-          tft.println("60 s");
-        }
-        else if (integrationMode == 1)
-        {
-          tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
-          tft.setFont(&FreeSans12pt7b);
-          tft.setTextSize(1);
-          tft.setCursor(180, 283);
-          tft.println("INT");
-          tft.setCursor(184, 309);
-          tft.println("5 s");
-        }
-        else if (integrationMode == 2)
-        {
-          tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
-          tft.setFont(&FreeSans12pt7b);
-          tft.setTextSize(1);
-          tft.setCursor(180, 283);
-          tft.println("INT");
-          tft.setCursor(169, 309);
-          tft.println("180 s");
-        }
-        if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to thingspeak every 5 minutes
-        {
-        if (WiFi.status() == WL_CONNECTED)
-          {
-            if (!MQTTclient.connected()) 
-            {
-              MQTTreconnect();
-            }
-            if (MQTTclient.connected()) 
-            {
-              if (integrationMode == 0) // change button based on touch and previous state
-              {
-                value = 60;
-              }
-              else if (integrationMode == 1)
-              {
-                value = 5;
-              }
-              else if (integrationMode == 2)
-              {
-                value = 180;
-              }
 
-              #if DEBUG_MODE && DEBUG_MQTT
-                Serial.println("MQTT >: " + String(IntTimeTopic) + ": " + (value));
-              #endif
+        tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
+        tft.setFont(&FreeSans12pt7b);
+        tft.setTextSize(1);
+        tft.setCursor(180, 283);
+        tft.println("INT");
 
-              snprintf (msg, MSG_BUFFER_SIZE, "%i", int(value));
-              MQTTclient.publish(IntTimeTopic, msg, true); 
-            }
-          } 
+        switch(integrationMode)
+        {
+          case 0: 
+            tft.setCursor(177, 309);
+            tft.println("60 s");
+            value = 60;
+            break;
+          case 1: 
+            tft.setCursor(184, 309);
+            tft.println("5 s");
+            value = 5;
+            break;
+          case 2: 
+            tft.setCursor(169, 309);
+            tft.println("180 s");
+            value = 180;
+            break;
+          default:
+            break;
         }
+
+        #if DEBUG_MODE && DEBUG_MQTT
+          Serial.println("MQTT >: " + String(IntTimeTopic) + ": " + (value));
+        #endif
+
+        if (MQTTsend) 
+        {
+          snprintf (msg, MSG_BUFFER_SIZE, "%i", int(value));
+          MQTTclient.publish(IntTimeTopic, msg, true);
+        } 
       }
       else if ((x > 64 && x < 159) && (y > 259 && y < 318)) // timed count 
       {
@@ -753,19 +712,25 @@ MQTTclient.loop();
         {
           tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 153, ledOnBitmap, 45, 45, ILI9341_WHITE);
-              #if DEBUG_MODE && DEBUG_MQTT
-                Serial.println("MQTT >: " + String(lighttopic) + ": true");
-              #endif
-          MQTTclient.publish(lighttopic, "true", true);          
+          if (MQTTsend) 
+          {
+            #if DEBUG_MODE && DEBUG_MQTT
+              Serial.println("MQTT >: " + String(lighttopic) + ": true");
+            #endif
+            MQTTclient.publish(lighttopic, "true", true);  
+          }        
         }
         else
         {
           tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 153, ledOffBitmap, 45, 45, ILI9341_WHITE);
-              #if DEBUG_MODE && DEBUG_MQTT
-                Serial.println("MQTT >: " + String(lighttopic) + ": false");
-              #endif
-          MQTTclient.publish(lighttopic, "false", true);
+          if (MQTTsend) 
+          {
+            #if DEBUG_MODE && DEBUG_MQTT
+              Serial.println("MQTT >: " + String(lighttopic) + ": false");
+            #endif
+            MQTTclient.publish(lighttopic, "false", true);
+          }
         }
       }
       else if ((x > 190 && x < 238) && (y > 205 && y < 256)) // toggle buzzer
@@ -775,19 +740,25 @@ MQTTclient.loop();
         {
           tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 208, buzzerOnBitmap, 45, 45, ILI9341_WHITE);
-              #if DEBUG_MODE && DEBUG_MQTT
-                Serial.println("MQTT >: " + String(buzzertopic) + ": true");
-              #endif
-          MQTTclient.publish(buzzertopic, "true", true);
+          if (MQTTsend) 
+          {
+            #if DEBUG_MODE && DEBUG_MQTT
+              Serial.println("MQTT >: " + String(buzzertopic) + ": true");
+            #endif
+            MQTTclient.publish(buzzertopic, "true", true);
+          }
         }
         else
         {
           tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
           tft.drawBitmap(190, 208, buzzerOffBitmap, 45, 45, ILI9341_WHITE);
-              #if DEBUG_MODE && DEBUG_MQTT
-                Serial.println("MQTT >: " + String(buzzertopic) + ": false");
-              #endif
-          MQTTclient.publish(buzzertopic, "false", true);
+          if (MQTTsend) 
+          {
+            #if DEBUG_MODE && DEBUG_MQTT
+              Serial.println("MQTT >: " + String(buzzertopic) + ": false");
+            #endif
+            MQTTclient.publish(buzzertopic, "false", true);
+          }
         }
       }
       else if ((x > 3 && x < 61) && (y > 259 && y < 316)) // settings button pressed
@@ -806,34 +777,33 @@ MQTTclient.loop();
         if (WiFi.status() == WL_CONNECTED)
         {
           if (!MQTTclient.connected()) 
-          {
             MQTTreconnect();
-          }
+
           if (MQTTclient.connected()) 
           {
-
             #if DEBUG_MODE && DEBUG_MQTT
-              Serial.println("MQTT >: DoseRate: " + String(doseRate) + " uSv/hr");
+              Serial.println("MQTT >: " + String(DoserateTopic) + ": " + String(doseRate) + " uSv/hr");
             #endif
             snprintf (msg, MSG_BUFFER_SIZE, "%f", doseRate);
             MQTTclient.publish(DoserateTopic, msg);
 
-            if (doseLevel == 0)
+            switch(doseLevel)
             {
-              snprintf (msg, MSG_BUFFER_SIZE, "NORMAL BACKGROUND");
-            }
-            else if (doseLevel == 1)
-            {
-              snprintf (msg, MSG_BUFFER_SIZE, "ELEVATED ACTIVITY");
-            }
-            else if (doseLevel == 2)
-            {
-              snprintf (msg, MSG_BUFFER_SIZE, "HIGH RADIATION LEVEL");
+              case 0: 
+                snprintf (msg, MSG_BUFFER_SIZE, "NORMAL BACKGROUND");
+                break;
+              case 1: 
+                snprintf (msg, MSG_BUFFER_SIZE, "ELEVATED ACTIVITY");
+                break;
+              case 2: 
+                snprintf (msg, MSG_BUFFER_SIZE, "HIGH RADIATION LEVEL");
+                break;
+              default:
+                break;
             }
 
             #if DEBUG_MODE && DEBUG_MQTT
-              Serial.print("MQTT >: DoseLevel: ");
-              Serial.println(msg);
+              Serial.print("MQTT >: " + String(DoseLevelTopic) + ": " + String(msg));
             #endif
 
             MQTTclient.publish(DoseLevelTopic, msg);
@@ -985,26 +955,16 @@ MQTTclient.loop();
           EEPROM.write(saveAlarmThreshold, alarmThreshold);
           EEPROM.commit(); // save to EEPROM to be retrieved at startup
 
-          if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to thingspeak every 5 minutes
+          if (MQTTsend) 
           {
-            if (WiFi.status() == WL_CONNECTED)
-            {
-              if (!MQTTclient.connected()) 
-              {
-                MQTTreconnect();
-              }
-              if (MQTTclient.connected()) 
-              {
-                snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);                             //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                #if DEBUG_MODE && DEBUG_MQTT
-                  //Serial.println("MQTT: Topic: "+ String(AlarmThresholdTopic) + (": ") + String(alarmThreshold));
-                  Serial.println("MQTT >: "+ String(AlarmThresholdTopic) + (": ") + msg);
-                #endif
-                MQTTclient.publish(AlarmThresholdTopic, msg, true);
-              }
-            } 
+            snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);                             
+            #if DEBUG_MODE && DEBUG_MQTT
+              Serial.println("MQTT >: "+ String(AlarmThresholdTopic) + (": ") + msg);
+            #endif
+            MQTTclient.publish(AlarmThresholdTopic, msg, true);
           }
-        }
+        } 
+
       drawSettingsPage();
       }
       else if ((x > 130 && x < 190) && (y > 70 && y < 120))
@@ -1054,25 +1014,15 @@ MQTTclient.loop();
           EEPROMWritelong(saveCalibration, conversionFactor);
           EEPROM.commit();
 
-          if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads data
+          if (MQTTsend) 
           {
-            if (WiFi.status() == WL_CONNECTED)
-              {
-              if (!MQTTclient.connected()) 
-              {
-                MQTTreconnect();
-              }
-              if (MQTTclient.connected()) 
-              {
-                snprintf (msg, MSG_BUFFER_SIZE, "%li", conversionFactor);        //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-//                snprintf (msg, MSG_BUFFER_SIZE, (conversionFactor.c_str()));
-                #if DEBUG_MODE && DEBUG_MQTT
-                    Serial.println("MQTT >: " + String(ConvFactorTopic) + ": " + conversionFactor);
-//                  Serial.println("MQTT: Topic: " + String(ConvFactorTopic) + ": " + msg);
-                #endif
-                MQTTclient.publish(ConvFactorTopic, msg, true); 
-              }
-            } 
+            snprintf (msg, MSG_BUFFER_SIZE, "%li", conversionFactor);        //====!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//            snprintf (msg, MSG_BUFFER_SIZE, (conversionFactor.c_str()));
+            #if DEBUG_MODE && DEBUG_MQTT
+              Serial.println("MQTT >: " + String(ConvFactorTopic) + ": " + conversionFactor);
+//              Serial.println("MQTT >: " + String(ConvFactorTopic) + ": " + msg);
+            #endif
+            MQTTclient.publish(ConvFactorTopic, msg, true); 
           }
         }
         drawSettingsPage();
@@ -1220,65 +1170,54 @@ MQTTclient.loop();
           EEPROM.write((a), ssidChar[a - 20]);               // save ssid and ssid length to EEPROM
         }
         EEPROM.write(saveSSIDLen, ssidLen);
-        #if DEBUG_MODE && DEBUG_EEPROM
-          Serial.println("EEPROM: WRITE_ssid: "+ String(ssidChar) + " WRITEidLen: "+ String(ssidLen));
-        #endif
         
         for (unsigned int b = 40; b < 40 + passLen; b++)
         {    
           EEPROM.write((b), passwordChar[b - 40]);          // save password and password length to EEPROM
         }
         EEPROM.write(savePWLen, passLen);
-        #if DEBUG_MODE && DEBUG_EEPROM
-          Serial.println("EEPROM: WRITE_password: "+ String(passwordChar) + " WRITEidLen: "+ String(passLen));
-        #endif
 
         for (unsigned int b = 60; b < 60 + m_idLen; b++)
         {
           EEPROM.write((b), AP_mqtt_clientid[b - 60]);
         }
         EEPROM.write(saveIDLen, m_idLen);
-        #if DEBUG_MODE && DEBUG_EEPROM
-          Serial.println("EEPROM: WRITE_clientid: "+ String(AP_mqtt_clientid) + " WRITEidLen: "+ String(m_idLen));
-        #endif
 
         for (unsigned int a = 80; a < 80 + m_ipLen; a++)
         {
           EEPROM.write((a), AP_mqtt_server[a - 80]);
         }
         EEPROM.write(saveIPLen, m_ipLen);
-        #if DEBUG_MODE && DEBUG_EEPROM
-          Serial.println("EEPROM: WRITE_mqtt_server: "+ String(AP_mqtt_server) + " WRITEipLen: "+ String(m_ipLen));
-        #endif
 
         for (unsigned int a = 95; a < 95 + m_portLen; a++)
         {
           EEPROM.write((a), AP_mqtt_port[a - 95]);
         }
         EEPROM.write(savePortLen, m_portLen);
-        #if DEBUG_MODE && DEBUG_EEPROM
-          Serial.println("EEPROM: WRITE_mqtt_port: "+ String(AP_mqtt_port) + " WRITEportLen: "+ String(m_portLen));
-        #endif
 
         for (unsigned int a = 100; a < 100 + m_loginLen; a++)
         {
           EEPROM.write((a), AP_mqtt_login[a - 100]);
         }
         EEPROM.write(saveMLoginLen, m_loginLen);
-        #if DEBUG_MODE && DEBUG_EEPROM
-          Serial.println("EEPROM: WRITE_mqtt_login: "+ String(AP_mqtt_login) + " WRITEloginLen: "+ String(m_loginLen));
-        #endif
 
         for (unsigned int a = 120; a < 120 + m_passLen; a++)
         {
           EEPROM.write((a), AP_mqtt_pass[a - 120]);
         }
         EEPROM.write(saveMPassLen, m_passLen);
-        #if DEBUG_MODE && DEBUG_EEPROM
-          Serial.println("EEPROM: WRITE_mqtt_pass: "+ String(AP_mqtt_pass) + " WRITEpassLen: "+ String(m_passLen));
-        #endif
 
         EEPROM.commit();
+
+        #if DEBUG_MODE && DEBUG_EEPROM
+          Serial.println("EEPROM: WRITE_ssid: "+ String(ssidChar) + " WRITEidLen: "+ String(ssidLen));
+          Serial.println("EEPROM: WRITE_password: "+ String(passwordChar) + " WRITEidLen: "+ String(passLen));
+          Serial.println("EEPROM: WRITE_clientid: "+ String(AP_mqtt_clientid) + " WRITEidLen: "+ String(m_idLen));
+          Serial.println("EEPROM: WRITE_mqtt_server: "+ String(AP_mqtt_server) + " WRITEipLen: "+ String(m_ipLen));
+          Serial.println("EEPROM: WRITE_mqtt_port: "+ String(AP_mqtt_port) + " WRITEportLen: "+ String(m_portLen));
+          Serial.println("EEPROM: WRITE_mqtt_login: "+ String(AP_mqtt_login) + " WRITEloginLen: "+ String(m_loginLen));
+          Serial.println("EEPROM: WRITE_mqtt_pass: "+ String(AP_mqtt_pass) + " WRITEpassLen: "+ String(m_passLen));
+        #endif
 
         tft.setCursor(16, 265);
         tft.println("Settings saved. Restarting");
@@ -1474,6 +1413,7 @@ MQTTclient.loop();
       {
         page = 0;
         drawHomePage();
+
         currentCount = 0;
         previousCount = 0;
         for (int a = 0; a < 60; a++)
@@ -1525,7 +1465,6 @@ MQTTclient.loop();
         tft.fillRoundRect(4, 71, 232, 48, 4, 0x2A86);
         tft.setCursor(13, 103);
         tft.println("GEIGER COUNTER");
-
         tft.fillRoundRect(4, 128, 232, 48, 4, ILI9341_BLACK);
         tft.setCursor(30, 160);
         tft.println("MON. STATION");
@@ -1538,7 +1477,6 @@ MQTTclient.loop();
         tft.fillRoundRect(4, 71, 232, 48, 4, ILI9341_BLACK);
         tft.setCursor(13, 103);
         tft.println("GEIGER COUNTER");
-
         tft.fillRoundRect(4, 128, 232, 48, 4, 0x2A86);
         tft.setCursor(30, 160);
         tft.println("MON. STATION");

@@ -22,6 +22,8 @@ void MQTTreconnect()
         Serial.println("Connected");
       #endif
 
+      MQTTsend = 1;
+
       MQTTclient.subscribe(CommandTopic);                                 // ... and resubscribe
 
       MQTTclient.publish(iptopic, (WiFi.localIP().toString().c_str()), true);
@@ -66,6 +68,8 @@ void MQTTreconnect()
         Serial.print("failed, Attempts=");
         Serial.println(uint32(MQTTattempts));
       #endif
+
+      MQTTsend = 0;
     }
   }
 }
