@@ -52,7 +52,7 @@ int attempts;                               // number of connection attempts whe
 int MQTTattempts;                           // number of MQTT connection attempts when device starts up in monitoring mode
 bool previousMQTTstatus;
 bool MQTTsend;                              // Флаг возможности отправки на MQTT сервер
-unsigned int MQTT_DataUpdateTime = 15;      // Интервал отправки данных на MQTT сервер
+unsigned int MQTTUpdateTime = 15;      // Интервал отправки данных на MQTT сервер
 
 //String subscr_topic = "EspDosimeter/Control/";
 //String prefix = "EspDosimeter/";
@@ -69,16 +69,19 @@ char iptopic[MSG_BUFFER_SIZE];
 char RSSI_Topic[MSG_BUFFER_SIZE];
 char batterytopic[MSG_BUFFER_SIZE];
 char ConvFactorTopic[MSG_BUFFER_SIZE];
+char CPMTopic[MSG_BUFFER_SIZE];
 char DoserateTopic[MSG_BUFFER_SIZE];
 char DoseLevelTopic[MSG_BUFFER_SIZE];
 char AlarmThresholdCommandTopic[MSG_BUFFER_SIZE];
 char IntTimeTopic[MSG_BUFFER_SIZE];
+char MQTTUpdateTimeTopic[MSG_BUFFER_SIZE];
 char CommandTopic[MSG_BUFFER_SIZE];
 char BuzzerCommandTopic[MSG_BUFFER_SIZE];
 char LightCommandTopic[MSG_BUFFER_SIZE];
 char ConvFactorCommandTopic[MSG_BUFFER_SIZE];
 char AlarmThresholdTopic[MSG_BUFFER_SIZE];
 char IntTimeCommandTopic[MSG_BUFFER_SIZE];
+char MQTTUpdateTimeCommandTopic[MSG_BUFFER_SIZE];
 char LWTTopic[MSG_BUFFER_SIZE];
 float value = 0;
 //=============================================================================================================================
@@ -149,7 +152,7 @@ const int saveIDLen = 11;
 const int savePortLen = 12;
 const int saveMLoginLen = 13;
 const int saveMPassLen = 14;
-const int saveMQTT_DataUpdateTime = 15;
+const int saveMQTTUpdateTime = 15;
 //const int saveLedSwitch = 15;
 //const int saveBuzzerSwitch = 16;
 //const int saveIntegrationMode = 17;             // 0 = medium, 1 = fast, 2 == slow;
@@ -223,7 +226,7 @@ void setup()
   EEPROM.begin(140);   // initialize emulated EEPROM sector 140 byte
 
   #if DEBUG_MODE && DEBUG_EEPROM
-    Serial.println("Reading settings from EEPROM...");
+    Serial.print("Reading settings from EEPROM... ");
   #endif
 
   doseUnits = EEPROM.read(saveUnits);                                //Address = 0
@@ -238,7 +241,7 @@ void setup()
   MQTTportLength = EEPROM.read(savePortLen);                         //Address = 12
   MQTTloginLength = EEPROM.read(saveMLoginLen);                      //Address = 13
   MQTTpassLength = EEPROM.read(saveMPassLen);                        //Address = 14
-//  MQTT_DataUpdateTime = EEPROM.read(saveMQTT_DataUpdateTime);       //Address = 15
+  MQTTUpdateTime = EEPROM.read(saveMQTTUpdateTime);                  //Address = 15
 
   for (int i = 20; i < 20 + SSIDLength; i++)
   {
@@ -274,41 +277,65 @@ void setup()
   {
     MQTTpassword[i - 120] = EEPROM.read(i);
   }
- 
+
   #if DEBUG_MODE && DEBUG_EEPROM
-    Serial.println("doseUnits: "+ String(doseUnits));
-    Serial.println("alarmThreshold: "+ String(alarmThreshold));  
-    Serial.println("conversionFactor: " + String(conversionFactor)); 
-    Serial.println("deviceMode: " + String(deviceMode));
-    Serial.println("isLogging: " + String(isLogging));
-    Serial.println("SSID: "+ String(ssid) + " Length: "+ String(SSIDLength));
-    Serial.println("Password: "+ String(password) + " Length: "+ String(passwordLength));
-    Serial.println("MQTTserver: "+ String(MQTTserverIP) + " Length: "+ String(MQTTserverLength));
-    Serial.println("DeviceID: "+ String(MQTTdeviceID) + " Length: "+ String(DeviceIDLength));
-    Serial.println("M Port: "+ String(MQTTport) + " Length: "+ String(MQTTportLength));
-    Serial.println("M Login: "+ String(MQTTlogin) + " Length: "+ String(MQTTloginLength));
-    Serial.println("M Pass: "+ String(MQTTpassword) + " Length: "+ String(MQTTpassLength));    
+    Serial.println("Complete");
+    Serial.println("------------------------------------------------------------------");
+    Serial.print("Device Mode:          ");  
+    switch(deviceMode)
+    {
+      case 0: 
+        Serial.println("Portable Dosimeter");
+        break;
+      case 1: 
+        Serial.println("MQTT Monitoring Station"); 
+        break;
+    }     
+    Serial.print("Dose Units:           ");
+    switch(doseUnits)
+    {
+      case 0: 
+        Serial.println("Sieverts (uSv/hr)");
+        break;
+      case 1: 
+        Serial.println("Rems (mR/hr)"); 
+        break;
+    }     
+    Serial.println("Alarm Threshold:      " + String(alarmThreshold));  
+    Serial.println("Conversion Factor:    " + String(conversionFactor)); 
+//    Serial.println("Logging:              " + String(isLogging));
+    Serial.println("MQTT Update Interval: " + String(MQTTUpdateTime) + " second"); 
+    Serial.println("SSID:                 " + String(ssid));// + "   L: "+ String(SSIDLength));
+    Serial.println("Password:             " + String(password));// + "   L: "+ String(passwordLength));
+    Serial.println("MQTT DeviceID:        " + String(MQTTdeviceID));// + "   L: "+ String(DeviceIDLength));
+    Serial.println("MQTT Server:          " + String(MQTTserverIP));// + "   L: "+ String(MQTTserverLength));
+    Serial.println("MQTT Port:            " + String(MQTTport));// + "   L: "+ String(MQTTportLength));
+    Serial.println("MQTT Login:           " + String(MQTTlogin));// + "   L: "+ String(MQTTloginLength));
+    Serial.println("MQTT Pass:            " + String(MQTTpassword));// + "   L: "+ String(MQTTpassLength));    
     Serial.println("==================================================================");
   #endif
 
-  snprintf (RSSI_Topic, MSG_BUFFER_SIZE, "%s/System/RSSI", MQTTdeviceID );
-  snprintf (batterytopic, MSG_BUFFER_SIZE, "%s/System/Battery", MQTTdeviceID );
-  snprintf (iptopic, MSG_BUFFER_SIZE, "%s/System/IP", MQTTdeviceID );
+  snprintf (RSSI_Topic, MSG_BUFFER_SIZE, "%s/System/RSSI", MQTTdeviceID);
+  snprintf (batterytopic, MSG_BUFFER_SIZE, "%s/System/Battery", MQTTdeviceID);
+  snprintf (iptopic, MSG_BUFFER_SIZE, "%s/System/IP", MQTTdeviceID);
 
-  snprintf (buzzertopic, MSG_BUFFER_SIZE, "%s/System/Buzzer", MQTTdeviceID );
-  snprintf (lighttopic, MSG_BUFFER_SIZE, "%s/System/Light", MQTTdeviceID );
-  snprintf (AlarmThresholdTopic, MSG_BUFFER_SIZE, "%s/System/AlarmThreshold", MQTTdeviceID );
-  snprintf (ConvFactorTopic, MSG_BUFFER_SIZE, "%s/System/ConversionFactor", MQTTdeviceID );
-  snprintf (IntTimeTopic, MSG_BUFFER_SIZE, "%s/System/Integration_Time", MQTTdeviceID );
+  snprintf (buzzertopic, MSG_BUFFER_SIZE, "%s/System/Buzzer", MQTTdeviceID);
+  snprintf (lighttopic, MSG_BUFFER_SIZE, "%s/System/Light", MQTTdeviceID);
+  snprintf (AlarmThresholdTopic, MSG_BUFFER_SIZE, "%s/System/AlarmThreshold", MQTTdeviceID);
+  snprintf (ConvFactorTopic, MSG_BUFFER_SIZE, "%s/System/ConversionFactor", MQTTdeviceID);
+  snprintf (IntTimeTopic, MSG_BUFFER_SIZE, "%s/System/Integration_Time", MQTTdeviceID);
+  snprintf (MQTTUpdateTimeTopic, MSG_BUFFER_SIZE, "%s/System/MQTTUpdate_Time", MQTTdeviceID);
 
-  snprintf (DoserateTopic, MSG_BUFFER_SIZE, "%s/Doserate/uSv_hr", MQTTdeviceID );
-  snprintf (DoseLevelTopic, MSG_BUFFER_SIZE, "%s/Doserate/DoseLevel", MQTTdeviceID );
+  snprintf (CPMTopic, MSG_BUFFER_SIZE, "%s/Doserate/CPM", MQTTdeviceID);
+  snprintf (DoserateTopic, MSG_BUFFER_SIZE, "%s/Doserate/uSv_hr", MQTTdeviceID);
+  snprintf (DoseLevelTopic, MSG_BUFFER_SIZE, "%s/Doserate/DoseLevel", MQTTdeviceID);
 
-  snprintf (BuzzerCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Buzzer", MQTTdeviceID );
-  snprintf (LightCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Light", MQTTdeviceID );
-  snprintf (AlarmThresholdCommandTopic, MSG_BUFFER_SIZE, "%s/Control/AlarmThreshold", MQTTdeviceID );
-  snprintf (ConvFactorCommandTopic, MSG_BUFFER_SIZE, "%s/Control/ConversionFactor", MQTTdeviceID );
-  snprintf (IntTimeCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Integration_Time", MQTTdeviceID );
+  snprintf (BuzzerCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Buzzer", MQTTdeviceID);
+  snprintf (LightCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Light", MQTTdeviceID);
+  snprintf (AlarmThresholdCommandTopic, MSG_BUFFER_SIZE, "%s/Control/AlarmThreshold", MQTTdeviceID);
+  snprintf (ConvFactorCommandTopic, MSG_BUFFER_SIZE, "%s/Control/ConversionFactor", MQTTdeviceID);
+  snprintf (IntTimeCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Integration_Time", MQTTdeviceID);
+  snprintf (MQTTUpdateTimeCommandTopic, MSG_BUFFER_SIZE, "%s/Control/MQTTUpdate_Time", MQTTdeviceID);
 
   snprintf (CommandTopic, MSG_BUFFER_SIZE, "%s/Control/#", MQTTdeviceID );
   snprintf (LWTTopic, MSG_BUFFER_SIZE, "%s/System/LWT", MQTTdeviceID );
@@ -332,7 +359,7 @@ void setup()
   else
   {
     #if DEBUG_MODE
-      Serial.println("CG-20M in Monitoring Station Mode.");
+      Serial.println("CG-20M in MQTT Monitoring Station Mode.");
       Serial.print("Connecting to WiFi.. ");
     #endif
 
@@ -385,6 +412,7 @@ void setup()
   #if DEBUG_MODE
     Serial.println("Start Up Init Complete. Ready to Go ...");
     Serial.println("Go!!!");
+    Serial.println("==================================================================");
   #endif
 } //                                                            void setup()
 //=============================================================================================================================
@@ -473,21 +501,16 @@ MQTTclient.loop();
 
       switch(integrationMode)
       {
-        case 0: // 60
+        case 0:     // 60
           averageCount = currentCount - count[i];                                 // count[i] stores the value from 60 seconds ago
-        case 1: // 5
+        case 1:     // 5
           averageCount = (currentCount - fastCount[j]) * 12;
-        case 2: // 180
+        case 2:     // 180
           averageCount = (currentCount - slowCount[k]) / 3;
         default:
           break;
       }
       averageCount = ((averageCount) / (1 - 0.00000333 * float(averageCount)));  // accounts for dead time of the geiger tube. relevant at high count rates
-
-//        #if DEBUG_MODE
-//          Serial.println("AC: " + String(averageCount) + " CPM");
-//        #endif
-
 
       if (doseUnits == 0)
       {
@@ -524,10 +547,6 @@ MQTTclient.loop();
         tft.setTextSize(5);
         tft.setTextColor(ILI9341_WHITE, DOSEBACKGROUND);
         tft.println(dose);                                        // display effective dose rate
-
-//        #if DEBUG_MODE
-//          Serial.println("Dose: " + String(dose));
-//        #endif
       }
 //------------------------------------------------------------------
       if (averageCount != previousaverageCount)                   // Вывод на дисплей
@@ -771,7 +790,7 @@ MQTTclient.loop();
     {
       currentUploadTime = millis();
 
-      if ((currentUploadTime - previousUploadTime) > (MQTT_DataUpdateTime*1000))
+      if ((currentUploadTime - previousUploadTime) > (MQTTUpdateTime*1000))
       {
         previousUploadTime = currentUploadTime;
         if (WiFi.status() == WL_CONNECTED)
@@ -782,7 +801,13 @@ MQTTclient.loop();
           if (MQTTclient.connected()) 
           {
             #if DEBUG_MODE && DEBUG_MQTT
-              Serial.println("MQTT >: " + String(DoserateTopic) + ": " + String(doseRate) + " uSv/hr");
+              Serial.println("MQTT >: " + String(CPMTopic) + ": " + String(averageCount));
+            #endif
+            snprintf (msg, MSG_BUFFER_SIZE, "%li", averageCount);
+            MQTTclient.publish(CPMTopic, msg);
+
+            #if DEBUG_MODE && DEBUG_MQTT
+              Serial.println("MQTT >: " + String(DoserateTopic) + ": " + String(doseRate));
             #endif
             snprintf (msg, MSG_BUFFER_SIZE, "%f", doseRate);
             MQTTclient.publish(DoserateTopic, msg);
@@ -803,7 +828,7 @@ MQTTclient.loop();
             }
 
             #if DEBUG_MODE && DEBUG_MQTT
-              Serial.print("MQTT >: " + String(DoseLevelTopic) + ": " + String(msg));
+              Serial.println("MQTT >: " + String(DoseLevelTopic) + ": " + String(msg));
             #endif
 
             MQTTclient.publish(DoseLevelTopic, msg);

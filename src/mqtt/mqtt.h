@@ -12,14 +12,12 @@ void MQTTreconnect()
       Serial.print("Attempting MQTT connection...");
     #endif
 
-    String clientId = String(MQTTdeviceID);
-
-    if (MQTTclient.connect(clientId.c_str(), MQTTlogin, MQTTpassword, LWTTopic, 0, false, "Offline", true))    // Attempt to connect
+    if (MQTTclient.connect(MQTTdeviceID, MQTTlogin, MQTTpassword, LWTTopic, 0, false, "Offline", true))    // Attempt to connect
     {                                                          
       MQTTclient.publish(LWTTopic, "Online");
 
       #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("Connected");
+        Serial.println("Connected!");
       #endif
 
       MQTTsend = 1;
@@ -30,11 +28,44 @@ void MQTTreconnect()
       snprintf (msg, MSG_BUFFER_SIZE, "%i", (WiFi.RSSI()));
       MQTTclient.publish(RSSI_Topic, msg);
 
+      snprintf (msg, MSG_BUFFER_SIZE, "%li", conversionFactor);                             
+      #if DEBUG_MODE && DEBUG_MQTT
+        Serial.println("MQTT >: "+ String(ConvFactorTopic) + (": ") + msg);
+      #endif
+      MQTTclient.publish(ConvFactorTopic, msg, true);
+
+      switch(integrationMode)
+      {
+        case 0: 
+          value = 60;
+          break;
+        case 1: 
+          value = 5;
+          break;
+        case 2: 
+          value = 180;
+          break;
+        default:
+          break;
+      }
+
+      snprintf (msg, MSG_BUFFER_SIZE, "%i", int(value));
+      #if DEBUG_MODE && DEBUG_MQTT
+        Serial.println("MQTT >: " + String(IntTimeTopic) + ": " + msg);
+      #endif
+      MQTTclient.publish(IntTimeTopic, msg, true);
+
       snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);                             
       #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: "+ String(AlarmThresholdTopic) + (": ") + msg);
+        Serial.println("MQTT >: "+ String(AlarmThresholdTopic) + ": " + msg);
       #endif
       MQTTclient.publish(AlarmThresholdTopic, msg, true);
+
+      snprintf (msg, MSG_BUFFER_SIZE, "%i", MQTTUpdateTime);                             
+      #if DEBUG_MODE && DEBUG_MQTT
+        Serial.println("MQTT >: "+ String(MQTTUpdateTimeTopic) + ": " + msg);
+      #endif
+      MQTTclient.publish(MQTTUpdateTimeTopic, msg, true);
 
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.println("MQTT >: " + String(buzzertopic) + ": " + buzzerSwitch);
@@ -96,7 +127,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   #if DEBUG_MODE && DEBUG_MQTT
     Serial.println("]");
   #endif
-
+//------------------------------------------------------------------
   if (String(topic) == String(BuzzerCommandTopic)) 
   {
     #if DEBUG_MODE && DEBUG_MQTT
@@ -136,6 +167,7 @@ void callback(char* topic, byte* payload, unsigned int length)
       #endif
     }
   }
+//------------------------------------------------------------------
   else if (String(topic) == String(LightCommandTopic)) 
   {
     #if DEBUG_MODE && DEBUG_MQTT
@@ -176,6 +208,7 @@ void callback(char* topic, byte* payload, unsigned int length)
       #endif
     }
   } 
+//------------------------------------------------------------------
   else if (String(topic) == String(ConvFactorCommandTopic)) 
   {
     if (atoi(messageTemp.c_str()) != int(conversionFactor))
@@ -204,13 +237,14 @@ void callback(char* topic, byte* payload, unsigned int length)
       }
     }
   }
+//------------------------------------------------------------------
   else if (String(topic) == String(AlarmThresholdCommandTopic)) 
   {
     if (atoi(messageTemp.c_str()) != int(alarmThreshold))
     {
-      EEPROMWritelong(saveAlarmThreshold, alarmThreshold);
-      EEPROM.commit();
       alarmThreshold = atoi(messageTemp.c_str());
+      EEPROM.write(saveAlarmThreshold, alarmThreshold);
+      EEPROM.commit();
 
       snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);
       MQTTclient.publish(AlarmThresholdTopic, msg, true);
@@ -232,32 +266,33 @@ void callback(char* topic, byte* payload, unsigned int length)
       }
     }
   }
+//------------------------------------------------------------------
   else if (String(topic) == String(IntTimeCommandTopic)) 
   {
     if (atoi(messageTemp.c_str()) != int(integrationMode))
     {
+      switch(atoi(messageTemp.c_str()))
+      {
+        case 60: 
+          integrationMode = 0;
+          break;
+        case 180: 
+          integrationMode = 2;
+          break;
+        case 5: 
+          integrationMode = 1;
+          break;
+        default:
+          break;
+      }
+
 //      EEPROMWritelong(saveIntegrationMode, integrationMode);
 //      EEPROM.commit();
-      if (atoi(messageTemp.c_str()) == 60) 
-      {
-        integrationMode = 0;
-        //integrationMode = atoi(messageTemp.c_str());
-      }
-      if (atoi(messageTemp.c_str()) == 180) 
-      {
-        integrationMode = 2;
-        //integrationMode = atoi(messageTemp.c_str());
-      }
-      if (atoi(messageTemp.c_str()) == 5) 
-      {
-        integrationMode = 1;
-        //integrationMode = atoi(messageTemp.c_str());
-      }
+
       //snprintf (msg, MSG_BUFFER_SIZE, "%i", integrationMode);
       //snprintf (msg, MSG_BUFFER_SIZE, "%i", messageTemp);
       snprintf (msg, MSG_BUFFER_SIZE, (messageTemp.c_str()));
       MQTTclient.publish(IntTimeTopic, msg, true);
-      //MQTTclient.publish(IntTimeTopic, String(messageTemp), true);
 
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.print("Changing integrationMode to ");
@@ -266,37 +301,62 @@ void callback(char* topic, byte* payload, unsigned int length)
    
       if (page == 0)     //
       {
-        if (integrationMode == 0) // change button based on touch and previous state
+        tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
+        tft.setFont(&FreeSans12pt7b);
+        tft.setTextSize(1);
+        tft.setCursor(180, 283);
+        tft.println("INT");
+
+        switch(integrationMode)
         {
-          tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
-          tft.setFont(&FreeSans12pt7b);
-          tft.setTextSize(1);
-          tft.setCursor(180, 283);
-          tft.println("INT");
-          tft.setCursor(177, 309);
-          tft.println("60 s");
-        }
-        else if (integrationMode == 1)
-        {
-          tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
-          tft.setFont(&FreeSans12pt7b);
-          tft.setTextSize(1);
-          tft.setCursor(180, 283);
-          tft.println("INT");
-          tft.setCursor(184, 309);
-          tft.println("5 s");
-        }
-        else if (integrationMode == 2)
-        {
-          tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
-          tft.setFont(&FreeSans12pt7b);
-          tft.setTextSize(1);
-          tft.setCursor(180, 283);
-          tft.println("INT");
-          tft.setCursor(169, 309);
-          tft.println("180 s");
+          case 0: 
+            tft.setCursor(177, 309);
+            tft.println("60 s");
+            value = 60;
+            break;
+          case 1: 
+            tft.setCursor(184, 309);
+            tft.println("5 s");
+            value = 5;
+            break;
+          case 2: 
+            tft.setCursor(169, 309);
+            tft.println("180 s");
+            value = 180;
+            break;
+          default:
+            break;
         }
       }
+    }
+  }
+//------------------------------------------------------------------
+  else if (String(topic) == String(MQTTUpdateTimeCommandTopic)) 
+  {
+    if (atoi(messageTemp.c_str()) != int(MQTTUpdateTime))
+    {
+      MQTTUpdateTime = atoi(messageTemp.c_str());
+      EEPROM.write(saveMQTTUpdateTime, MQTTUpdateTime);
+      EEPROM.commit();
+
+      snprintf (msg, MSG_BUFFER_SIZE, "%i", MQTTUpdateTime);
+      MQTTclient.publish(MQTTUpdateTimeTopic, msg, true);
+
+      #if DEBUG_MODE && DEBUG_MQTT
+        Serial.print("Changing MQTTUpdateTime to ");
+        Serial.println(MQTTUpdateTime);
+      #endif
+   
+      // if (page == 3)     // if alarmThreshold page
+      // {
+      //   tft.setFont();
+      //   tft.setTextSize(3);
+      //   tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+      //   tft.setCursor(151, 146);
+      //   tft.println(MQTTUpdateTime);
+      //   if (MQTTUpdateTime < 10)
+      //  tft.fillRect(169, 146, 22, 22, ILI9341_BLACK);
+      // }
     }
   }
 }                                                        //void callback
