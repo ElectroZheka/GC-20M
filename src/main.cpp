@@ -211,14 +211,9 @@ void setup()
     Serial.println("GC-20M Starting...");
   #endif
 
-  SPI.begin();
-  SPI.setFrequency(24000000L);
-
   ts.begin();
   ts.setRotation(0);
 
-  //tft.setSPIFreqency(10000000); // set 1 MHz
-  //tft.initSPI(16000000L); // init @ 1 MHz.
   tft.begin();
   tft.setRotation(2);
   tft.fillScreen(ILI9341_BLACK);
