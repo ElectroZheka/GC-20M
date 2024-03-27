@@ -367,6 +367,7 @@ void setup()
     #endif
 
     WiFi.mode(WIFI_STA);
+    WiFi.hostname("GC-20M");
     WiFi.begin(ssid, password);
     drawBlankDialogueBox();
     tft.setTextSize(1);
@@ -1566,6 +1567,7 @@ void loop()
             #endif
 
             WiFi.mode(WIFI_STA);
+            WiFi.hostname("GC-20M");
             WiFi.begin(ssid, password);
 
             drawBlankDialogueBox();
