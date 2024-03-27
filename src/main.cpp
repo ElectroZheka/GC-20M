@@ -221,9 +221,6 @@ void setup()
     Serial.println("GC-20M Starting...");
   #endif
 
-  // SPI.begin();
-  // SPI.setFrequency(24000000L);
-
   ts.begin();
   ts.setRotation(0);
 
