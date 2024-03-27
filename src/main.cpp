@@ -303,7 +303,7 @@ void setup()
         Serial.println("Sieverts (uSv/hr)");
         break;
       case 1: 
-        Serial.println("Rems (mR/hr)"); 
+        Serial.println("Rems (uR/hr)"); 
         break;
     }     
     Serial.println("Alarm Threshold:      " + String(alarmThreshold));  
@@ -969,7 +969,7 @@ void loop()
 
         tft.fillRoundRect(4, 128, 232, 48, 4, ILI9341_BLACK);
         tft.setCursor(47, 160);
-        tft.println("Rems (mR/hr)");
+        tft.println("Rems (uR/hr)");
       }
       else if ((x > 4 && x < 234) && (y > 127 && y < 177))
       {
@@ -980,7 +980,7 @@ void loop()
 
         tft.fillRoundRect(4, 128, 232, 48, 4, 0x2A86);
         tft.setCursor(47, 160);
-        tft.println("Rems (mR/hr)");
+        tft.println("Rems (uR/hr)");
       }
     }
   }
