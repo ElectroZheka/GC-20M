@@ -48,7 +48,7 @@ char MQTTport[5];
 char MQTTlogin[20];                         //  
 char MQTTpassword[20];                      // 
 
-int attempts;                               // number of connection attempts when device starts up in monitoring mode
+int attempts = 0;                               // number of connection attempts when device starts up in monitoring mode
 int MQTTattempts;                           // number of MQTT connection attempts when device starts up in monitoring mode
 bool previousMQTTstatus;
 bool MQTTsend;                              // Флаг возможности отправки на MQTT сервер
@@ -132,7 +132,6 @@ bool doseUnits = 0;                  // 0 = Sievert, 1 = Rem
 //long conversionFactor = 575; //175;
 unsigned long conversionFactor;// = 525; //175;
 float GeigerDeadTime = 0.000190;
-//unsigned int GeigerDeadTime_uS = 190;
 long TestMicros;                      // Переменная для замера времени выполнения кода
 //=============================================================================================================================
 // Touchscreen variable
@@ -141,9 +140,6 @@ bool wasTouched;
 int x, y;                           // touch points
 //=============================================================================================================================
 // Battery indicator variables
-//int batteryInput;
-//unsigned int batteryInput;
-//float batteryVoltage;
 int batteryPercent;
 int previousbatteryPercent = 150;    // >100 for first update display when boot
 int batteryMapped = 212;            // pixel location of battery icon
@@ -295,7 +291,8 @@ void setup()
       case 1: 
         Serial.println("MQTT Monitoring Station"); 
         break;
-    }     
+    }
+
     Serial.print("Dose Units:           ");
     switch(doseUnits)
     {
@@ -356,17 +353,17 @@ void setup()
       Serial.println("CG-20M in Portable Dosimeter Mode.");
     #endif
 
-//    WiFi.mode( WIFI_OFF );                                     // turn off wifi
-    WiFi.setSleepMode(WIFI_MODEM_SLEEP);
+//    WiFi.mode( WIFI_OFF );            
+    WiFi.setSleepMode(WIFI_MODEM_SLEEP);                         // turn off wifi
     WiFi.forceSleepBegin(); 
-//    delay(1);
+    delay(1);
     MQTTsend = 0;
   }
   else
   {
     #if DEBUG_MODE
       Serial.println("CG-20M in MQTT Monitoring Station Mode.");
-      Serial.print("Connecting to WiFi.. ");
+      Serial.print("Connecting to WiFi.");
     #endif
 
     WiFi.mode(WIFI_STA);
@@ -376,17 +373,21 @@ void setup()
     tft.setFont(&FreeSans9pt7b);
     tft.setTextColor(ILI9341_WHITE);
     tft.setCursor(38, 120);
-    tft.println("Connecting to WiFi..");
+    tft.println("Connecting to WiFi...");
 
     while ((WiFi.status() != WL_CONNECTED) && (attempts < 100))
     {
       delay(100);
       attempts ++;
+      #if DEBUG_MODE && DEBUG_WiFi
+        Serial.print(".");
+      #endif  
     }
+
     if (attempts >= 100)
     {
       #if DEBUG_MODE && DEBUG_WiFi
-        Serial.println("Failed to connect.");
+        Serial.println(" Failed to connect.");
       #endif
       deviceMode = 0; 
       tft.setCursor(45, 160);
@@ -396,7 +397,7 @@ void setup()
     else
     {
       #if DEBUG_MODE && DEBUG_WiFi
-        Serial.println("Connected!");
+        Serial.println(" Connected!");
         Serial.print("Local IP: ");
         Serial.println(WiFi.localIP()); 
       #endif
@@ -407,7 +408,7 @@ void setup()
       tft.setCursor(78, 200);
       tft.println(WiFi.localIP());
 
-      delay(1500);
+      delay(1000);
 
       MQTTclient.setServer(MQTTserverIP, atoi(MQTTport));  
       MQTTclient.setCallback(callback);
@@ -444,6 +445,33 @@ void loop()
         MQTTsend = 0;
       }
     }
+    // else
+    // {
+    //   #if DEBUG_MODE
+    //     Serial.print("Connecting to WiFi.. ");
+    //   #endif
+
+      // WiFi.mode(WIFI_STA);
+      // WiFi.begin(ssid, password);
+
+      // if (WiFi.status() != WL_CONNECTED)
+      // {
+      //   #if DEBUG_MODE && DEBUG_WiFi
+      //     Serial.println("Failed to connect.");
+      //   #endif
+      // }
+      // else
+      // {
+      //   #if DEBUG_MODE && DEBUG_WiFi
+      //     Serial.println("Connected!");
+      //     Serial.print("Local IP: ");
+      //     Serial.println(WiFi.localIP()); 
+      //   #endif
+
+//        MQTTclient.setServer(MQTTserverIP, atoi(MQTTport));  
+//        MQTTclient.setCallback(callback);
+//        MQTTreconnect();
+      // }
   }
 //=============================================================================================================================
   if (page == 0)                                                // homepage
@@ -1517,6 +1545,82 @@ void loop()
         {
           EEPROM.write(saveDeviceMode, deviceMode); 
           EEPROM.commit();
+
+//---------------------------------------------------------------------------------------------
+          if (!deviceMode)
+          {
+            #if DEBUG_MODE
+              Serial.println("CG-20M go in Portable Dosimeter Mode.");
+            #endif
+
+//            WiFi.mode( WIFI_OFF );            
+            WiFi.setSleepMode(WIFI_MODEM_SLEEP);                         // turn off wifi
+            WiFi.forceSleepBegin(); 
+            MQTTsend = 0;               /////////////////////////////////////////////////////////////////////// Добавить гашение М в заголовке
+          }
+          else
+          {
+            #if DEBUG_MODE
+              Serial.println("CG-20M go in MQTT Monitoring Station Mode.");
+              Serial.print("Connecting to WiFi.");
+            #endif
+
+            WiFi.mode(WIFI_STA);
+            WiFi.begin(ssid, password);
+
+            drawBlankDialogueBox();
+            tft.setTextSize(1);
+            tft.setFont(&FreeSans9pt7b);
+            tft.setTextColor(ILI9341_WHITE);
+            tft.setCursor(38, 120);
+            tft.println("Connecting to WiFi...");
+
+            attempts  = 0;
+
+            while ((WiFi.status() != WL_CONNECTED) && (attempts < 100))
+            {
+              delay(100);
+              attempts ++;
+              #if DEBUG_MODE && DEBUG_WiFi
+                Serial.print(".");
+              #endif  
+            }
+             if (attempts >= 100)
+            {
+              #if DEBUG_MODE && DEBUG_WiFi
+                Serial.println("Failed to connect.");
+              #endif
+ //             deviceMode = 0; 
+              tft.setCursor(45, 160);
+              tft.println("Failed to connect.");
+              delay(1000);
+            }
+            else
+            {
+              #if DEBUG_MODE && DEBUG_WiFi
+                Serial.println("Connected!");
+                Serial.print("Local IP: ");
+                Serial.println(WiFi.localIP()); 
+              #endif
+
+              tft.setCursor(68, 160);
+              tft.println("Connected!");
+              tft.setCursor(55, 200);
+              tft.println("IP:"); 
+              tft.setCursor(78, 200);
+              tft.println(WiFi.localIP());
+
+              delay(1000);
+
+              MQTTclient.setServer(MQTTserverIP, atoi(MQTTport));  
+              MQTTclient.setCallback(callback);
+              MQTTreconnect();
+            }
+          }       
+//      drawHomePage();
+//      page = 0;
+//---------------------------------------------------------------------------------------------
+
         }
         drawWifiPage();
       }
@@ -1530,7 +1634,6 @@ void loop()
         tft.fillRoundRect(4, 128, 232, 48, 4, ILI9341_BLACK);
         tft.setCursor(30, 160);
         tft.println("MON. STATION");
-
       }
       else if ((x > 4 && x < 234) && (y > 127 && y < 177))
       {

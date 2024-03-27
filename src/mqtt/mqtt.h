@@ -5,103 +5,109 @@
 
 void MQTTreconnect() 
 {
+  #if DEBUG_MODE && DEBUG_MQTT
+   Serial.print("Attempting MQTT connection.");
+  #endif
+
   MQTTattempts = 0;
+
   while ((!MQTTclient.connected()) && (MQTTattempts < 3))                 // Loop until we're reconnected
   {   
+    MQTTclient.connect(MQTTdeviceID, MQTTlogin, MQTTpassword, LWTTopic, 0, false, "Offline", true);
+    MQTTattempts ++;
+    #if DEBUG_MODE && DEBUG_WiFi
+      Serial.print(".");
+    delay(10);
+    #endif 
+  }
+
+  if (MQTTclient.connected())    // Attempt to connect
+  {                                                          
+    MQTTclient.publish(LWTTopic, "Online");
+
     #if DEBUG_MODE && DEBUG_MQTT
-      Serial.print("Attempting MQTT connection...");
+      Serial.println(" Connected!");
     #endif
 
-    if (MQTTclient.connect(MQTTdeviceID, MQTTlogin, MQTTpassword, LWTTopic, 0, false, "Offline", true))    // Attempt to connect
-    {                                                          
-      MQTTclient.publish(LWTTopic, "Online");
+    MQTTsend = 1;
 
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("Connected!");
-      #endif
+    MQTTclient.subscribe(CommandTopic);                                 // ... and resubscribe
 
-      MQTTsend = 1;
+    MQTTclient.publish(iptopic, (WiFi.localIP().toString().c_str()), true);
+    snprintf (msg, MSG_BUFFER_SIZE, "%i", (WiFi.RSSI()));
+    MQTTclient.publish(RSSI_Topic, msg);
 
-      MQTTclient.subscribe(CommandTopic);                                 // ... and resubscribe
+    snprintf (msg, MSG_BUFFER_SIZE, "%li", conversionFactor);                             
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.println("MQTT >: "+ String(ConvFactorTopic) + (": ") + msg);
+    #endif
+    MQTTclient.publish(ConvFactorTopic, msg, true);
 
-      MQTTclient.publish(iptopic, (WiFi.localIP().toString().c_str()), true);
-      snprintf (msg, MSG_BUFFER_SIZE, "%i", (WiFi.RSSI()));
-      MQTTclient.publish(RSSI_Topic, msg);
-
-      snprintf (msg, MSG_BUFFER_SIZE, "%li", conversionFactor);                             
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: "+ String(ConvFactorTopic) + (": ") + msg);
-      #endif
-      MQTTclient.publish(ConvFactorTopic, msg, true);
-
-      switch(integrationMode)
-      {
-        case 0: 
-          value = 60;
-          break;
-        case 1: 
-          value = 5;
-          break;
-        case 2: 
-          value = 180;
-          break;
-        default:
-          break;
-      }
-
-      snprintf (msg, MSG_BUFFER_SIZE, "%i", int(value));
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: " + String(IntTimeTopic) + ": " + msg);
-      #endif
-      MQTTclient.publish(IntTimeTopic, msg, true);
-
-      snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);                             
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: "+ String(AlarmThresholdTopic) + ": " + msg);
-      #endif
-      MQTTclient.publish(AlarmThresholdTopic, msg, true);
-
-      snprintf (msg, MSG_BUFFER_SIZE, "%i", MQTTUpdateTime);                             
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: "+ String(MQTTUpdateTimeTopic) + ": " + msg);
-      #endif
-      MQTTclient.publish(MQTTUpdateTimeTopic, msg, true);
-
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: " + String(buzzertopic) + ": " + buzzerSwitch);
-      #endif
-      if (buzzerSwitch)
-      {
-      //  MQTTclient.publish(lighttopic, ((char)buzzerSwitch), true);
-        MQTTclient.publish(lighttopic, "true", true);
-      }
-      else
-      {
-        MQTTclient.publish(lighttopic, "false", true);
-      }
-
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: " + String(lighttopic) + ": " + ledSwitch);
-      #endif
-      if (ledSwitch)
-      {
-        MQTTclient.publish(lighttopic, "true", true);
-      }
-      else
-      {
-        MQTTclient.publish(lighttopic, "false", true);
-      }
-    } 
-    else 
+    switch(integrationMode)
     {
-      MQTTattempts++;
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.print("failed, Attempts=");
-        Serial.println(uint32(MQTTattempts));
-      #endif
-
-      MQTTsend = 0;
+      case 0: 
+        value = 60;
+        break;
+      case 1: 
+        value = 5;
+        break;
+      case 2: 
+        value = 180;
+        break;
+      default:
+        break;
     }
+
+    snprintf (msg, MSG_BUFFER_SIZE, "%i", int(value));
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.println("MQTT >: " + String(IntTimeTopic) + ": " + msg);
+    #endif
+    MQTTclient.publish(IntTimeTopic, msg, true);
+
+    snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);                             
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.println("MQTT >: "+ String(AlarmThresholdTopic) + ": " + msg);
+    #endif
+    MQTTclient.publish(AlarmThresholdTopic, msg, true);
+
+    snprintf (msg, MSG_BUFFER_SIZE, "%i", MQTTUpdateTime);                             
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.println("MQTT >: "+ String(MQTTUpdateTimeTopic) + ": " + msg);
+    #endif
+    MQTTclient.publish(MQTTUpdateTimeTopic, msg, true);
+
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.println("MQTT >: " + String(buzzertopic) + ": " + buzzerSwitch);
+    #endif
+    if (buzzerSwitch)
+    {
+      MQTTclient.publish(lighttopic, "true", true);
+    }
+    else
+    {
+      MQTTclient.publish(lighttopic, "false", true);
+    }
+
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.println("MQTT >: " + String(lighttopic) + ": " + ledSwitch);
+    #endif
+    if (ledSwitch)
+    {
+      MQTTclient.publish(lighttopic, "true", true);
+    }
+    else
+    {
+      MQTTclient.publish(lighttopic, "false", true);
+    }
+  } 
+  else 
+  {
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.print(" failed, Attempts=");
+      Serial.println(uint32(MQTTattempts));
+    #endif
+
+    MQTTsend = 0;
   }
 }
 //                                                              void MQTTreconnect() 

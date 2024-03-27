@@ -9,7 +9,7 @@
 //#define DEBUG_MODE false  // change "false" to "true" to enable
 // Next, logs levels for comfortable deallbugging, 
 // if DEBUG_MODE == false, logs level are not important 
-#define DEBUG_TS true         // print touchscreen logs
+#define DEBUG_TS false         // print touchscreen logs
 #define DEBUG_WiFi true       // print WiFi logs
 #define DEBUG_AP true         // print WiFi logs
 #define DEBUG_MQTT true       // print MQTT logs

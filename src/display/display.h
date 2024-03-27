@@ -443,11 +443,19 @@ void drawDeviceModePage()
   tft.setCursor(30, 160);
   tft.println("MON. STATION");
 
+  // tft.setFont(&FreeSans9pt7b);
+  // tft.setCursor(20, 200);
+  // tft.println("Press Back button and");
+  // tft.setCursor(20, 220);
+  // tft.println("reset device for changes");
+  // tft.setCursor(20, 240);
+  // tft.println("to take effect");
+
   tft.setFont(&FreeSans9pt7b);
   tft.setCursor(20, 200);
-  tft.println("Press Back button and");
+  tft.println("Press Back button");
   tft.setCursor(20, 220);
-  tft.println("reset device for changes");
+  tft.println("for changes");
   tft.setCursor(20, 240);
   tft.println("to take effect");
 }
