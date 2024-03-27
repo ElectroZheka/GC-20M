@@ -400,7 +400,9 @@ void setup()
       #if DEBUG_MODE && DEBUG_WiFi
         Serial.println(" Connected!");
         Serial.print("Local IP: ");
-        Serial.println(WiFi.localIP()); 
+        Serial.print(WiFi.localIP()); 
+        Serial.print("  RSSI: ");
+        Serial.println(WiFi.RSSI());
       #endif
       tft.setCursor(68, 160);
       tft.println("Connected!");
