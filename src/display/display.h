@@ -62,7 +62,7 @@ void drawHomePage()
   }
   else if (doseUnits == 1)
   {
-    tft.println("mR/hr");
+    tft.println("uR/hr");
   }
 
   tft.fillRoundRect(3, 94, 234, 21, 3, 0x2DC6);
@@ -93,7 +93,7 @@ void drawHomePage()
   else if (doseUnits == 1)
   {
     tft.setCursor(37, 235);
-    tft.println("mR:");
+    tft.println("uR:");
   }
 
   tft.fillRoundRect(3, 259, 58, 57, 3, 0x3B8F);
@@ -245,7 +245,7 @@ void drawUnitsPage()
   if (doseUnits == 1)
     tft.fillRoundRect(4, 128, 232, 48, 4, 0x2A86);
   tft.setCursor(47, 160);
-  tft.println("Rems (mR/hr)");
+  tft.println("Rems (uR/hr)");
 }
 //=============================================================================================================================
 void drawAlertPage()

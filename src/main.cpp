@@ -70,7 +70,8 @@ char RSSI_Topic[MSG_BUFFER_SIZE];
 char batterytopic[MSG_BUFFER_SIZE];
 char ConvFactorTopic[MSG_BUFFER_SIZE];
 char CPMTopic[MSG_BUFFER_SIZE];
-char DoserateTopic[MSG_BUFFER_SIZE];
+char Doserate_uSv_Topic[MSG_BUFFER_SIZE];
+char Doserate_uR_Topic[MSG_BUFFER_SIZE];
 char DoseLevelTopic[MSG_BUFFER_SIZE];
 char AlarmThresholdCommandTopic[MSG_BUFFER_SIZE];
 char IntTimeTopic[MSG_BUFFER_SIZE];
@@ -117,13 +118,22 @@ unsigned long cumulativeCount;
 float doseRate;
 float previousdoseRate;
 float totalDose;
+
+float doseRate_uSv;
+float totalDose_uSv;
+float doseRate_uR;
+float totalDose_uR;
+
 char dose[5];
 int doseLevel;                       // determines home screen warning signs
 int previousDoseLevel;
 bool doseUnits = 0;                  // 0 = Sievert, 1 = Rem
 //unsigned int conversionFactor = 575; //175;
 //long conversionFactor = 575; //175;
-unsigned long conversionFactor = 525; //175;
+unsigned long conversionFactor;// = 525; //175;
+float GeigerDeadTime = 0.000190;
+//unsigned int GeigerDeadTime_uS = 190;
+long TestMicros;                      // Переменная для замера времени выполнения кода
 //=============================================================================================================================
 // Touchscreen variable
 XPT2046_Touchscreen ts(CS_PIN);
@@ -211,14 +221,12 @@ void setup()
     Serial.println("GC-20M Starting...");
   #endif
 
-  SPI.begin();
-  SPI.setFrequency(24000000L);
+  // SPI.begin();
+  // SPI.setFrequency(24000000L);
 
   ts.begin();
   ts.setRotation(0);
 
-  //tft.setSPIFreqency(10000000); // set 1 MHz
-  //tft.initSPI(16000000L); // init @ 1 MHz.
   tft.begin();
   tft.setRotation(2);
   tft.fillScreen(ILI9341_BLACK);
@@ -327,7 +335,8 @@ void setup()
   snprintf (MQTTUpdateTimeTopic, MSG_BUFFER_SIZE, "%s/System/MQTTUpdate_Time", MQTTdeviceID);
 
   snprintf (CPMTopic, MSG_BUFFER_SIZE, "%s/Doserate/CPM", MQTTdeviceID);
-  snprintf (DoserateTopic, MSG_BUFFER_SIZE, "%s/Doserate/uSv_hr", MQTTdeviceID);
+  snprintf (Doserate_uSv_Topic, MSG_BUFFER_SIZE, "%s/Doserate/uSv_hr", MQTTdeviceID);
+  snprintf (Doserate_uR_Topic, MSG_BUFFER_SIZE, "%s/Doserate/uR_hr", MQTTdeviceID);
   snprintf (DoseLevelTopic, MSG_BUFFER_SIZE, "%s/Doserate/DoseLevel", MQTTdeviceID);
 
   snprintf (BuzzerCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Buzzer", MQTTdeviceID);
@@ -420,7 +429,25 @@ void setup()
 //                                                              void loop())
 void loop()
 {
-MQTTclient.loop();
+  MQTTclient.loop();
+
+  if (deviceMode)                               // deviceMode is 1 when in monitoring station mode. 
+  {
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      if (!MQTTclient.connected()) 
+      MQTTreconnect();
+
+      if (MQTTclient.connected()) 
+      {
+        MQTTsend = 1;
+      }
+      else
+      {
+        MQTTsend = 0;
+      }
+    }
+  }
 //=============================================================================================================================
   if (page == 0)                                                // homepage
   {
@@ -510,18 +537,33 @@ MQTTclient.loop();
         default:
           break;
       }
-      averageCount = ((averageCount) / (1 - 0.00000333 * float(averageCount)));  // accounts for dead time of the geiger tube. relevant at high count rates
+
+      averageCount = ((averageCount) / (1 - GeigerDeadTime * averageCount));  // Compensation dead time of the geiger tube. relevant at high count rates
+
+      doseRate_uSv = float(averageCount) / conversionFactor;
+      totalDose_uSv = float(cumulativeCount) / (60 * conversionFactor);
+
+      doseRate_uR = doseRate_uSv * 100;
+      totalDose_uR = totalDose_uSv * 100;
+
+      // TestMicros = micros();
+
+      // TestMicros = micros() - TestMicros;
+      // #if DEBUG_MODE && DEBUG_TEST
+      //   Serial.println("TEST: "+ String(TestMicros));
+      // #endif
 
       if (doseUnits == 0)
       {
-        doseRate = averageCount / float(conversionFactor);
-        totalDose = cumulativeCount / (60 * float(conversionFactor));
+        doseRate = doseRate_uSv;
+        totalDose = totalDose_uSv;
       }
       else if (doseUnits == 1)
       {
-        doseRate = averageCount / float(conversionFactor * 10.0);
-        totalDose = cumulativeCount / (60 * float(conversionFactor * 10.0)); // 1 mRem == 10 uSv
+        doseRate = doseRate_uR;
+        totalDose = totalDose_uR;    // 1 uSv = 100uR
       }
+      
       tft.setFont();
       tft.setTextSize(2);
       tft.setTextColor(ILI9341_WHITE, 0x630C);
@@ -786,54 +828,52 @@ MQTTclient.loop();
         drawSettingsPage();
       }
     }
-    if (deviceMode)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to mqtt every 15 sec    Сделать управляемый интервал
+    if (MQTTsend)    // deviceMode is 1 when in monitoring station mode. Uploads CPM to mqtt every 15 sec    Сделать управляемый интервал
     {
       currentUploadTime = millis();
 
-      if ((currentUploadTime - previousUploadTime) > (MQTTUpdateTime*1000))
+      if ((currentUploadTime - previousUploadTime) > (MQTTUpdateTime * 1000))
       {
         previousUploadTime = currentUploadTime;
-        if (WiFi.status() == WL_CONNECTED)
+
+        #if DEBUG_MODE && DEBUG_MQTT
+          Serial.println("MQTT >: " + String(CPMTopic) + ": " + String(averageCount));
+        #endif
+        snprintf (msg, MSG_BUFFER_SIZE, "%li", averageCount);
+        MQTTclient.publish(CPMTopic, msg);
+
+        #if DEBUG_MODE && DEBUG_MQTT
+          Serial.println("MQTT >: " + String(Doserate_uSv_Topic) + ": " + String(doseRate_uSv));
+        #endif
+        snprintf (msg, MSG_BUFFER_SIZE, "%f", doseRate_uSv);
+        MQTTclient.publish(Doserate_uSv_Topic, msg);
+
+        #if DEBUG_MODE && DEBUG_MQTT
+          Serial.println("MQTT >: " + String(Doserate_uR_Topic) + ": " + String(doseRate_uR));
+        #endif
+        snprintf (msg, MSG_BUFFER_SIZE, "%f", doseRate_uR);
+        MQTTclient.publish(Doserate_uR_Topic, msg);
+
+        switch(doseLevel)
         {
-          if (!MQTTclient.connected()) 
-            MQTTreconnect();
+          case 0: 
+            snprintf (msg, MSG_BUFFER_SIZE, "NORMAL BACKGROUND");
+            break;
+          case 1: 
+            snprintf (msg, MSG_BUFFER_SIZE, "ELEVATED ACTIVITY");
+            break;
+          case 2: 
+            snprintf (msg, MSG_BUFFER_SIZE, "HIGH RADIATION LEVEL");
+            break;
+          default:
+            break;
+        }
 
-          if (MQTTclient.connected()) 
-          {
-            #if DEBUG_MODE && DEBUG_MQTT
-              Serial.println("MQTT >: " + String(CPMTopic) + ": " + String(averageCount));
-            #endif
-            snprintf (msg, MSG_BUFFER_SIZE, "%li", averageCount);
-            MQTTclient.publish(CPMTopic, msg);
+        #if DEBUG_MODE && DEBUG_MQTT
+          Serial.println("MQTT >: " + String(DoseLevelTopic) + ": " + String(msg));
+        #endif
 
-            #if DEBUG_MODE && DEBUG_MQTT
-              Serial.println("MQTT >: " + String(DoserateTopic) + ": " + String(doseRate));
-            #endif
-            snprintf (msg, MSG_BUFFER_SIZE, "%f", doseRate);
-            MQTTclient.publish(DoserateTopic, msg);
-
-            switch(doseLevel)
-            {
-              case 0: 
-                snprintf (msg, MSG_BUFFER_SIZE, "NORMAL BACKGROUND");
-                break;
-              case 1: 
-                snprintf (msg, MSG_BUFFER_SIZE, "ELEVATED ACTIVITY");
-                break;
-              case 2: 
-                snprintf (msg, MSG_BUFFER_SIZE, "HIGH RADIATION LEVEL");
-                break;
-              default:
-                break;
-            }
-
-            #if DEBUG_MODE && DEBUG_MQTT
-              Serial.println("MQTT >: " + String(DoseLevelTopic) + ": " + String(msg));
-            #endif
-
-            MQTTclient.publish(DoseLevelTopic, msg);
-          }
-        } 
+        MQTTclient.publish(DoseLevelTopic, msg);
       }
     }
   }
