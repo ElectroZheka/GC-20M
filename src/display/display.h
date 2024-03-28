@@ -36,7 +36,7 @@ void drawHomePage()
   tft.setTextColor(ILI9341_CYAN);
   tft.setFont(&FreeSans9pt7b);
   tft.setCursor(2, 16);
-  tft.println("GC-20M");
+  tft.println(DeviceName);
   tft.setTextColor(ILI9341_WHITE);
   
   tft.setFont();
@@ -482,7 +482,7 @@ void drawFrame(){
   tft.setTextColor(ILI9341_CYAN);
   
   tft.setTextSize(1);
-  tft.println("GC-20M");
+  tft.println(DeviceName);
   tft.setTextColor(ILI9341_WHITE);
 
   tft.setFont();

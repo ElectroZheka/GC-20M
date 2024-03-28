@@ -282,11 +282,11 @@ void callback(char* topic, byte* payload, unsigned int length)
         case 60: 
           integrationMode = 0;
           break;
-        case 180: 
-          integrationMode = 2;
-          break;
         case 5: 
           integrationMode = 1;
+          break;
+        case 180: 
+          integrationMode = 2;
           break;
         default:
           break;

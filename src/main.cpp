@@ -37,9 +37,13 @@ int DeviceIDLength;
 int MQTTportLength;
 int MQTTloginLength;
 int MQTTpassLength;
+
 char ssid[20];
 char password[20];
 WiFiClient client;
+
+const char DeviceName[7] = "GC-20M";
+
 //=============================================================================================================================
 // MQTT variables
 char MQTTdeviceID[20];                      // = "Esp_Dosimeter"; 
@@ -48,18 +52,13 @@ char MQTTport[5];
 char MQTTlogin[20];                         //  
 char MQTTpassword[20];                      // 
 
-int attempts = 0;                               // number of connection attempts when device starts up in monitoring mode
+int attempts = 0;                           // number of connection attempts when device starts up in monitoring mode
 int MQTTattempts;                           // number of MQTT connection attempts when device starts up in monitoring mode
 bool previousMQTTstatus;
 bool MQTTsend;                              // Флаг возможности отправки на MQTT сервер
-unsigned int MQTTUpdateTime = 15;      // Интервал отправки данных на MQTT сервер
-
-//String subscr_topic = "EspDosimeter/Control/";
-//String prefix = "EspDosimeter/";
-//String buf_recv;
+unsigned int MQTTUpdateTime = 15;           // Интервал отправки данных на MQTT сервер
 
 PubSubClient MQTTclient(client);
-//#define MSG_BUFFER_SIZE	(50)
 
 char msg[MSG_BUFFER_SIZE];
 char topic[MSG_BUFFER_SIZE];
@@ -90,7 +89,7 @@ float value = 0;
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 
 unsigned long count[61];
-unsigned long fastCount[6];                   // arrays to store running counts
+unsigned long fastCount[6];          // arrays to store running counts
 unsigned long slowCount[181];
 int i = 0;                           // array elements
 int j = 0;
@@ -103,11 +102,13 @@ long currentMillis;                  // Секундный таймер
 long previousMillis;                 // Секундный таймер
 unsigned long currentMicros;         // Таймер одновибратора
 unsigned long previousMicros;        // Таймер одновибратора
+
 bool deviceMode;                     // 0 = Portable, 1 = Station
 bool ledSwitch = 1;
 bool buzzerSwitch = 1;
 unsigned int integrationMode = 0;             // 0 = medium, 1 = fast, 2 == slow;
 unsigned int alarmThreshold = 5;
+
 //=============================================================================================================================
 // Geiger counter variable
 unsigned long averageCount;
@@ -127,27 +128,29 @@ float totalDose_uR;
 char dose[5];
 int doseLevel;                       // determines home screen warning signs
 int previousDoseLevel;
+
 bool doseUnits = 0;                  // 0 = Sievert, 1 = Rem
 //unsigned int conversionFactor = 575; //175;
 //long conversionFactor = 575; //175;
-unsigned long conversionFactor;// = 525; //175;
+unsigned long conversionFactor;       // = 525; //175;
+
 float GeigerDeadTime = 0.000190;
 long TestMicros;                      // Переменная для замера времени выполнения кода
 //=============================================================================================================================
 // Touchscreen variable
 XPT2046_Touchscreen ts(CS_PIN);
 bool wasTouched;
-int x, y;                           // touch points
+int x, y;                            // touch points
 //=============================================================================================================================
 // Battery indicator variables
 int batteryPercent;
 int previousbatteryPercent = 150;    // >100 for first update display when boot
-int batteryMapped = 212;            // pixel location of battery icon
+int batteryMapped = 212;             // pixel location of battery icon
 int batteryUpdateCounter = 29;
 //=============================================================================================================================
 // EEPROM variables
 const int saveUnits = 0;
-const int saveAlarmThreshold = 1;   // Addresses for storing settings data in the EEPROM
+const int saveAlarmThreshold = 1;    // Addresses for storing settings data in the EEPROM
 const int saveCalibration = 2;
 const int saveDeviceMode = 6;
 const int saveLoggingMode = 7;
@@ -159,6 +162,7 @@ const int savePortLen = 12;
 const int saveMLoginLen = 13;
 const int saveMPassLen = 14;
 const int saveMQTTUpdateTime = 15;
+
 //const int saveLedSwitch = 15;
 //const int saveBuzzerSwitch = 16;
 //const int saveIntegrationMode = 17;             // 0 = medium, 1 = fast, 2 == slow;
@@ -174,21 +178,21 @@ unsigned long elapsedTime;
 int progress;
 float cpm;
 bool completed = 0;
-int intervalSize;                    // stores how many digits are in the interval
+int intervalSize;                       // stores how many digits are in the interval
 //=============================================================================================================================
 // Logging variables
 bool isLogging;
 //=============================================================================================================================
 // interrupt routine declaration
 const int interruptPin = 5;
-unsigned int previousIntMicros;              // timers to limit count increment rate in the ISR
+unsigned int previousIntMicros;        // timers to limit count increment rate in the ISR
 void isr();
 //=============================================================================================================================
 #include "display/display.h"
 #include "EEPROM/EEPROM.h"
 #include "mqtt/mqtt.h"
 //=============================================================================================================================
-void IRAM_ATTR isr() // interrupt service routine
+void IRAM_ATTR isr()                   // interrupt service routine
 {
   if ((micros() - Dead_Time_Geiger) > previousIntMicros) 
   {   
@@ -214,7 +218,7 @@ void setup()
     Serial.println(" ");
     Serial.println(" ");
     Serial.println("==================================================================");
-    Serial.println("GC-20M Starting...");
+    Serial.println(String(DeviceName) + " Starting...");
   #endif
 
   ts.begin();
@@ -224,7 +228,7 @@ void setup()
   tft.setRotation(2);
   tft.fillScreen(ILI9341_BLACK);
 
-  EEPROM.begin(140);   // initialize emulated EEPROM sector 140 byte
+  EEPROM.begin(140);                                                 // initialize emulated EEPROM sector 140 byte
 
   #if DEBUG_MODE && DEBUG_EEPROM
     Serial.print("Reading settings from EEPROM... ");
@@ -350,7 +354,7 @@ void setup()
   if (!deviceMode)
   {
     #if DEBUG_MODE
-      Serial.println("CG-20M in Portable Dosimeter Mode.");
+      Serial.println(String(DeviceName) + " in Portable Dosimeter Mode.");
     #endif
 
 //    WiFi.mode( WIFI_OFF );            
@@ -362,12 +366,13 @@ void setup()
   else
   {
     #if DEBUG_MODE
-      Serial.println("CG-20M in MQTT Monitoring Station Mode.");
+      Serial.println(String(DeviceName) + " in MQTT Monitoring Station Mode.");
       Serial.print("Connecting to WiFi.");
     #endif
 
     WiFi.mode(WIFI_STA);
-    WiFi.hostname("GC-20M");
+//    WiFi.hostname("GC-20M");
+    WiFi.hostname(DeviceName);
     WiFi.begin(ssid, password);
     drawBlankDialogueBox();
     tft.setTextSize(1);
@@ -1182,7 +1187,8 @@ void loop()
         tft.setCursor(20, 100);
         tft.println("device, connect to");
         tft.setCursor(20, 120);
-        tft.println("network \"GC20\" and ");
+//        tft.println("network \"GC20\" and ");
+        tft.println("network " + String(DeviceName) + " and ");                                                          
         tft.setCursor(20, 140);
         tft.println("browse to 192.168.4.1.");
         tft.setCursor(20, 160);
@@ -1199,7 +1205,8 @@ void loop()
         #if DEBUG_MODE 
           Serial.println("==================================================================");
           Serial.println("WIFI AP: Change Mode to AP");
-          Serial.println("WIFI AP: Connect to AP GC-20M and browse to IP adress 192.168.4.1.");
+//          Serial.println("WIFI AP: Connect to AP GC-20M and browse to IP adress 192.168.4.1.");
+          Serial.println("WIFI AP: Connect to AP " + String(DeviceName) + " and browse to IP adress 192.168.4.1.");
           Serial.println("WIFI AP: Enter credentials of your WiFi network and"); 
           Serial.println("WIFI AP: the IP address MQTT server and write MQTT device ID");
           Serial.println("==================================================================");
@@ -1227,7 +1234,8 @@ void loop()
         wifiManager.addParameter(&wm_mqtt_login); 
         wifiManager.addParameter(&wm_mqtt_pass);        
 
-        wifiManager.startConfigPortal("GC-20M");             // put the esp in AP mode for wifi setup, create a network with name "GC20"
+//        wifiManager.startConfigPortal("GC-20M");             // put the esp in AP mode for wifi setup, create a network with name "GC20"
+        wifiManager.startConfigPortal(DeviceName);             // put the esp in AP mode for wifi setup, create a network with name "GC20"
 
         String ssidString = WiFi.SSID();                     // retrieve ssid and password form the WifiManager library
         String passwordString = WiFi.psk();
@@ -1553,7 +1561,7 @@ void loop()
           if (!deviceMode)
           {
             #if DEBUG_MODE
-              Serial.println("CG-20M go in Portable Dosimeter Mode.");
+              Serial.println(String(DeviceName) + " go in Portable Dosimeter Mode.");
             #endif
 
 //            WiFi.mode( WIFI_OFF );            
@@ -1564,12 +1572,12 @@ void loop()
           else
           {
             #if DEBUG_MODE
-              Serial.println("CG-20M go in MQTT Monitoring Station Mode.");
+              Serial.println(String(DeviceName) + " go in MQTT Monitoring Station Mode.");
               Serial.print("Connecting to WiFi.");
             #endif
 
             WiFi.mode(WIFI_STA);
-            WiFi.hostname("GC-20M");
+            WiFi.hostname(DeviceName);
             WiFi.begin(ssid, password);
 
             drawBlankDialogueBox();
