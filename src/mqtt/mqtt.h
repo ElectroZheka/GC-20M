@@ -3,6 +3,10 @@
 
 #include "../settings/settings.h"
 
+void MQTTreconnect();
+void callback(char* topic, byte* payload, unsigned int length);
+
+//=============================================================================================================================
 void MQTTreconnect() 
 {
   #if DEBUG_MODE && DEBUG_MQTT
@@ -81,11 +85,11 @@ void MQTTreconnect()
     #endif
     if (buzzerSwitch)
     {
-      MQTTclient.publish(lighttopic, "true", true);
+      MQTTclient.publish(buzzertopic, "1", true);
     }
     else
     {
-      MQTTclient.publish(lighttopic, "false", true);
+      MQTTclient.publish(buzzertopic, "0", true);
     }
 
     #if DEBUG_MODE && DEBUG_MQTT
@@ -93,11 +97,11 @@ void MQTTreconnect()
     #endif
     if (ledSwitch)
     {
-      MQTTclient.publish(lighttopic, "true", true);
+      MQTTclient.publish(lighttopic, "1", true);
     }
     else
     {
-      MQTTclient.publish(lighttopic, "false", true);
+      MQTTclient.publish(lighttopic, "0", true);
     }
   } 
   else 
@@ -139,32 +143,22 @@ void callback(char* topic, byte* payload, unsigned int length)
     #if DEBUG_MODE && DEBUG_MQTT
       Serial.print("Changing buzzer to ");
     #endif
-    if(messageTemp == "true")
+
+    if(messageTemp == "1")
     {
+      buzzerSwitch = 1;
+      MQTTclient.publish(buzzertopic, "1");
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.println("ON");
       #endif
-
-      buzzerSwitch = true;
-      if (page == 0)
-      {
-        tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
-        tft.drawBitmap(190, 208, buzzerOnBitmap, 45, 45, ILI9341_WHITE);
-      }
-      MQTTclient.publish(buzzertopic, "true");
     }
-    else if(messageTemp == "false")
+    else if(messageTemp == "0")
     {
+      buzzerSwitch = 0;
+      MQTTclient.publish(buzzertopic, "0");
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.println("OFF");
       #endif
-      buzzerSwitch = false;
-      if (page == 0)
-      {
-        tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
-        tft.drawBitmap(190, 208, buzzerOffBitmap, 45, 45, ILI9341_WHITE);
-      }
-      MQTTclient.publish(buzzertopic, "false");
     }
     else 
     {
@@ -172,6 +166,9 @@ void callback(char* topic, byte* payload, unsigned int length)
         Serial.println("Failed");
       #endif
     }
+    
+    if (page == 0)
+      drawBuzzer();    
   }
 //------------------------------------------------------------------
   else if (String(topic) == String(LightCommandTopic)) 
@@ -180,32 +177,22 @@ void callback(char* topic, byte* payload, unsigned int length)
       Serial.print("Changing light to ");
     #endif
 
-    if(messageTemp == "true")
+    if(messageTemp == "1")
     {
+      ledSwitch = 1;
+      MQTTclient.publish(lighttopic, "1");
+
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.println("ON");
       #endif
-
-      ledSwitch = true;
-      if (page == 0)
-      {
-        tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
-        tft.drawBitmap(190, 153, ledOnBitmap, 45, 45, ILI9341_WHITE);
-      }
-      MQTTclient.publish(lighttopic, "true");
     }
-    else if(messageTemp == "false")
+    else if(messageTemp == "0")
     {
+      ledSwitch = 0;
+      MQTTclient.publish(lighttopic, "0");
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.println("OFF");
       #endif
-      ledSwitch = false;
-      if (page == 0)
-      {
-        tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
-        tft.drawBitmap(190, 153, ledOffBitmap, 45, 45, ILI9341_WHITE);
-      }
-      MQTTclient.publish(lighttopic, "false");
     }
     else 
     {
@@ -213,6 +200,8 @@ void callback(char* topic, byte* payload, unsigned int length)
         Serial.println("Error");
       #endif
     }
+    if (page == 0)
+      drawBuzzer();
   } 
 //------------------------------------------------------------------
   else if (String(topic) == String(ConvFactorCommandTopic)) 
@@ -233,13 +222,7 @@ void callback(char* topic, byte* payload, unsigned int length)
      
       if (page == 4)     // if calibration page
       {
-        tft.setFont();
-        tft.setTextSize(3);
-        tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-        tft.setCursor(161, 146);
-        tft.println(conversionFactor);
-        if (conversionFactor < 100)
-          tft.fillRect(197, 146, 22, 22, ILI9341_BLACK);
+        drawConvFactor();
       }
     }
   }
@@ -262,13 +245,7 @@ void callback(char* topic, byte* payload, unsigned int length)
    
       if (page == 3)     // if alarmThreshold page
       {
-        tft.setFont();
-        tft.setTextSize(3);
-        tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-        tft.setCursor(151, 146);
-        tft.println(alarmThreshold);
-        if (alarmThreshold < 10)
-       tft.fillRect(169, 146, 22, 22, ILI9341_BLACK);
+        drawAlarmThreshold();
       }
     }
   }
