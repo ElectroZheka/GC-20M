@@ -5,8 +5,8 @@
 #define SETTINGS_INCLUDED
 
 #define DEBUG_BAUD 921600
-#define DEBUG_MODE true // change "false" to "true" to enable
-//#define DEBUG_MODE false  // change "false" to "true" to enable
+//#define DEBUG_MODE true // change "true" to "false" to disable
+#define DEBUG_MODE false  // change "false" to "true" to enable
 // Next, logs levels for comfortable deallbugging, 
 // if DEBUG_MODE == false, logs level are not important 
 #define DEBUG_TS true         // print touchscreen logs
@@ -15,10 +15,11 @@
 #define DEBUG_MQTT true       // print MQTT logs
 #define DEBUG_EEPROM true     // print EEPROM logs
 #define DEBUG_BATT true       // print BATT logs
+#define DEBUG_TEST true       // print BATT logs
 
 #define BUZZER_PIN D0         // 
 #define ACT_LED D3            // 
-
+#define interruptPin D1       // GPIO 5
 #define CS_PIN D2             // Touchscreen CS Pin
 
 #define BATT_PIN A0           // ADC Battery input Pin

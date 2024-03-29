@@ -3,105 +3,115 @@
 
 #include "../settings/settings.h"
 
+void MQTTreconnect();
+void callback(char* topic, byte* payload, unsigned int length);
+
+//=============================================================================================================================
 void MQTTreconnect() 
 {
+  #if DEBUG_MODE && DEBUG_MQTT
+   Serial.print("Attempting MQTT connection.");
+  #endif
+
   MQTTattempts = 0;
+
   while ((!MQTTclient.connected()) && (MQTTattempts < 3))                 // Loop until we're reconnected
   {   
+    MQTTclient.connect(MQTTdeviceID, MQTTlogin, MQTTpassword, LWTTopic, 0, false, "Offline", true);
+    MQTTattempts ++;
+    #if DEBUG_MODE && DEBUG_WiFi
+      Serial.print(".");
+    delay(10);
+    #endif 
+  }
+
+  if (MQTTclient.connected())    // Attempt to connect
+  {                                                          
+    MQTTclient.publish(LWTTopic, "Online");
+
     #if DEBUG_MODE && DEBUG_MQTT
-      Serial.print("Attempting MQTT connection...");
+      Serial.println(" Connected!");
     #endif
 
-    if (MQTTclient.connect(MQTTdeviceID, MQTTlogin, MQTTpassword, LWTTopic, 0, false, "Offline", true))    // Attempt to connect
-    {                                                          
-      MQTTclient.publish(LWTTopic, "Online");
+    MQTTsend = 1;
 
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("Connected!");
-      #endif
+    MQTTclient.subscribe(CommandTopic);                                 // ... and resubscribe
 
-      MQTTsend = 1;
+    MQTTclient.publish(iptopic, (WiFi.localIP().toString().c_str()), true);
+    snprintf (msg, MSG_BUFFER_SIZE, "%i", (WiFi.RSSI()));
+    MQTTclient.publish(RSSI_Topic, msg);
 
-      MQTTclient.subscribe(CommandTopic);                                 // ... and resubscribe
+    snprintf (msg, MSG_BUFFER_SIZE, "%li", conversionFactor);                             
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.println("MQTT >: "+ String(ConvFactorTopic) + (": ") + msg);
+    #endif
+    MQTTclient.publish(ConvFactorTopic, msg, true);
 
-      MQTTclient.publish(iptopic, (WiFi.localIP().toString().c_str()), true);
-      snprintf (msg, MSG_BUFFER_SIZE, "%i", (WiFi.RSSI()));
-      MQTTclient.publish(RSSI_Topic, msg);
-
-      snprintf (msg, MSG_BUFFER_SIZE, "%li", conversionFactor);                             
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: "+ String(ConvFactorTopic) + (": ") + msg);
-      #endif
-      MQTTclient.publish(ConvFactorTopic, msg, true);
-
-      switch(integrationMode)
-      {
-        case 0: 
-          value = 60;
-          break;
-        case 1: 
-          value = 5;
-          break;
-        case 2: 
-          value = 180;
-          break;
-        default:
-          break;
-      }
-
-      snprintf (msg, MSG_BUFFER_SIZE, "%i", int(value));
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: " + String(IntTimeTopic) + ": " + msg);
-      #endif
-      MQTTclient.publish(IntTimeTopic, msg, true);
-
-      snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);                             
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: "+ String(AlarmThresholdTopic) + ": " + msg);
-      #endif
-      MQTTclient.publish(AlarmThresholdTopic, msg, true);
-
-      snprintf (msg, MSG_BUFFER_SIZE, "%i", MQTTUpdateTime);                             
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: "+ String(MQTTUpdateTimeTopic) + ": " + msg);
-      #endif
-      MQTTclient.publish(MQTTUpdateTimeTopic, msg, true);
-
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: " + String(buzzertopic) + ": " + buzzerSwitch);
-      #endif
-      if (buzzerSwitch)
-      {
-      //  MQTTclient.publish(lighttopic, ((char)buzzerSwitch), true);
-        MQTTclient.publish(lighttopic, "true", true);
-      }
-      else
-      {
-        MQTTclient.publish(lighttopic, "false", true);
-      }
-
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.println("MQTT >: " + String(lighttopic) + ": " + ledSwitch);
-      #endif
-      if (ledSwitch)
-      {
-        MQTTclient.publish(lighttopic, "true", true);
-      }
-      else
-      {
-        MQTTclient.publish(lighttopic, "false", true);
-      }
-    } 
-    else 
+    switch(integrationMode)
     {
-      MQTTattempts++;
-      #if DEBUG_MODE && DEBUG_MQTT
-        Serial.print("failed, Attempts=");
-        Serial.println(uint32(MQTTattempts));
-      #endif
-
-      MQTTsend = 0;
+      case 0: 
+        value = 60;
+        break;
+      case 1: 
+        value = 5;
+        break;
+      case 2: 
+        value = 180;
+        break;
+      default:
+        break;
     }
+
+    snprintf (msg, MSG_BUFFER_SIZE, "%i", int(value));
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.println("MQTT >: " + String(IntTimeTopic) + ": " + msg);
+    #endif
+    MQTTclient.publish(IntTimeTopic, msg, true);
+
+    snprintf (msg, MSG_BUFFER_SIZE, "%i", alarmThreshold);                             
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.println("MQTT >: "+ String(AlarmThresholdTopic) + ": " + msg);
+    #endif
+    MQTTclient.publish(AlarmThresholdTopic, msg, true);
+
+    snprintf (msg, MSG_BUFFER_SIZE, "%i", MQTTUpdateTime);                             
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.println("MQTT >: "+ String(MQTTUpdateTimeTopic) + ": " + msg);
+    #endif
+    MQTTclient.publish(MQTTUpdateTimeTopic, msg, true);
+
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.println("MQTT >: " + String(buzzertopic) + ": " + buzzerSwitch);
+    #endif
+    if (buzzerSwitch)
+    {
+      MQTTclient.publish(buzzertopic, "1", true);
+    }
+    else
+    {
+      MQTTclient.publish(buzzertopic, "0", true);
+    }
+
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.println("MQTT >: " + String(lighttopic) + ": " + ledSwitch);
+    #endif
+    if (ledSwitch)
+    {
+      MQTTclient.publish(lighttopic, "1", true);
+    }
+    else
+    {
+      MQTTclient.publish(lighttopic, "0", true);
+    }
+  } 
+  else 
+  {
+    #if DEBUG_MODE && DEBUG_MQTT
+      Serial.print(" failed, Attempts=");
+      Serial.println(uint32(MQTTattempts));
+    #endif
+
+    MQTTsend = 0;
   }
 }
 //                                                              void MQTTreconnect() 
@@ -133,32 +143,22 @@ void callback(char* topic, byte* payload, unsigned int length)
     #if DEBUG_MODE && DEBUG_MQTT
       Serial.print("Changing buzzer to ");
     #endif
-    if(messageTemp == "true")
+
+    if(messageTemp == "1")
     {
+      buzzerSwitch = 1;
+      MQTTclient.publish(buzzertopic, "1");
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.println("ON");
       #endif
-
-      buzzerSwitch = true;
-      if (page == 0)
-      {
-        tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
-        tft.drawBitmap(190, 208, buzzerOnBitmap, 45, 45, ILI9341_WHITE);
-      }
-      MQTTclient.publish(buzzertopic, "true");
     }
-    else if(messageTemp == "false")
+    else if(messageTemp == "0")
     {
+      buzzerSwitch = 0;
+      MQTTclient.publish(buzzertopic, "0");
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.println("OFF");
       #endif
-      buzzerSwitch = false;
-      if (page == 0)
-      {
-        tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
-        tft.drawBitmap(190, 208, buzzerOffBitmap, 45, 45, ILI9341_WHITE);
-      }
-      MQTTclient.publish(buzzertopic, "false");
     }
     else 
     {
@@ -166,6 +166,9 @@ void callback(char* topic, byte* payload, unsigned int length)
         Serial.println("Failed");
       #endif
     }
+    
+    if (page == 0)
+      drawBuzzer();    
   }
 //------------------------------------------------------------------
   else if (String(topic) == String(LightCommandTopic)) 
@@ -174,32 +177,22 @@ void callback(char* topic, byte* payload, unsigned int length)
       Serial.print("Changing light to ");
     #endif
 
-    if(messageTemp == "true")
+    if(messageTemp == "1")
     {
+      ledSwitch = 1;
+      MQTTclient.publish(lighttopic, "1");
+
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.println("ON");
       #endif
-
-      ledSwitch = true;
-      if (page == 0)
-      {
-        tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
-        tft.drawBitmap(190, 153, ledOnBitmap, 45, 45, ILI9341_WHITE);
-      }
-      MQTTclient.publish(lighttopic, "true");
     }
-    else if(messageTemp == "false")
+    else if(messageTemp == "0")
     {
+      ledSwitch = 0;
+      MQTTclient.publish(lighttopic, "0");
       #if DEBUG_MODE && DEBUG_MQTT
         Serial.println("OFF");
       #endif
-      ledSwitch = false;
-      if (page == 0)
-      {
-        tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
-        tft.drawBitmap(190, 153, ledOffBitmap, 45, 45, ILI9341_WHITE);
-      }
-      MQTTclient.publish(lighttopic, "false");
     }
     else 
     {
@@ -207,6 +200,8 @@ void callback(char* topic, byte* payload, unsigned int length)
         Serial.println("Error");
       #endif
     }
+    if (page == 0)
+      drawBuzzer();
   } 
 //------------------------------------------------------------------
   else if (String(topic) == String(ConvFactorCommandTopic)) 
@@ -227,13 +222,7 @@ void callback(char* topic, byte* payload, unsigned int length)
      
       if (page == 4)     // if calibration page
       {
-        tft.setFont();
-        tft.setTextSize(3);
-        tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-        tft.setCursor(161, 146);
-        tft.println(conversionFactor);
-        if (conversionFactor < 100)
-          tft.fillRect(197, 146, 22, 22, ILI9341_BLACK);
+        drawConvFactor();
       }
     }
   }
@@ -256,13 +245,7 @@ void callback(char* topic, byte* payload, unsigned int length)
    
       if (page == 3)     // if alarmThreshold page
       {
-        tft.setFont();
-        tft.setTextSize(3);
-        tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-        tft.setCursor(151, 146);
-        tft.println(alarmThreshold);
-        if (alarmThreshold < 10)
-       tft.fillRect(169, 146, 22, 22, ILI9341_BLACK);
+        drawAlarmThreshold();
       }
     }
   }
@@ -276,11 +259,11 @@ void callback(char* topic, byte* payload, unsigned int length)
         case 60: 
           integrationMode = 0;
           break;
-        case 180: 
-          integrationMode = 2;
-          break;
         case 5: 
           integrationMode = 1;
+          break;
+        case 180: 
+          integrationMode = 2;
           break;
         default:
           break;
