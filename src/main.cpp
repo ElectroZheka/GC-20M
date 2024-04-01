@@ -521,10 +521,13 @@ void loop()
       {
         case 0:     // 60
           averageCount = currentCount - count[i];                                 // count[i] stores the value from 60 seconds ago
+          break;
         case 1:     // 5
           averageCount = (currentCount - fastCount[j]) * 12;
+          break;
         case 2:     // 180
           averageCount = (currentCount - slowCount[k]) / 3;
+          break;
         default:
           break;
       }
