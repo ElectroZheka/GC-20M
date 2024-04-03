@@ -22,6 +22,8 @@
 #include "settings/settings.h"
 #include "Bitmap/Bitmap.h"
 #include "battery/battery.h"
+// #include <NTPClient.h>
+// #include <WiFiUdp.h>
 //#include "touchscreen/touchscreen.h"
 
 //#include "FontsRus/FreeSans9pt7b.h"
@@ -170,6 +172,13 @@ const int saveMQTTUpdateTime = 15;
 //const int saveAlarmThreshold = 18;
 //const int saveDoseUnits = 0;                  // 0 = Sievert, 1 = Rem
 //const int saveConversionFactor = 575;
+//=============================================================================================================================
+// // You can specify the time server pool and the offset, (in seconds)
+// // additionaly you can specify the update interval (in milliseconds).
+// WiFiUDP ntpUDP;
+// int GTMOffset = 3;
+// NTPClient timeClient(ntpUDP, "europe.pool.ntp.org", GTMOffset*60*60, 60000);
+ 
 //=============================================================================================================================
 // Timed Count Variables:
 int interval = 5;
@@ -346,8 +355,7 @@ void setup()
       Serial.println(String(DeviceName) + " in Portable Dosimeter Mode.");
     #endif
 
-//    WiFi.mode( WIFI_OFF );            
-    WiFi.setSleepMode(WIFI_MODEM_SLEEP);                         // turn off wifi
+    WiFi.mode( WIFI_OFF );                          // turn off wifi           
     WiFi.forceSleepBegin(); 
     delay(1);
     MQTTsend = 0;
@@ -407,6 +415,11 @@ void setup()
       tft.println(WiFi.localIP());
 
       delay(1000);
+
+      // timeClient.begin();
+      // timeClient.update();
+      // Serial.print("NTP Time: ");
+      // Serial.println(timeClient.getFormattedTime());
 
       MQTTclient.setServer(MQTTserverIP, atoi(MQTTport));  
       MQTTclient.setCallback(callback);
@@ -1004,9 +1017,8 @@ void loop()
         wifiManager.addParameter(&wm_mqtt_server);
         wifiManager.addParameter(&wm_mqtt_port);
         wifiManager.addParameter(&wm_mqtt_login); 
-        wifiManager.addParameter(&wm_mqtt_pass);        
+        wifiManager.addParameter(&wm_mqtt_pass);    
 
-//        wifiManager.startConfigPortal("GC-20M");             // put the esp in AP mode for wifi setup, create a network with name "GC20"
         wifiManager.startConfigPortal(DeviceName);             // put the esp in AP mode for wifi setup, create a network with name "GC20"
 
         String ssidString = WiFi.SSID();                     // retrieve ssid and password form the WifiManager library
@@ -1038,66 +1050,80 @@ void loop()
         ssidString.toCharArray(ssidChar, ssidLen + 1); 
         passwordString.toCharArray(passwordChar, passLen + 1);
 
-        for (unsigned int a = 20; a < 20 + ssidLen; a++)
+        if (ssidLen < 20 and passLen < 20 and m_idLen < 20 and m_ipLen < 20 and m_portLen < 20 and m_loginLen < 20 and m_passLen < 20) // Проверка размера введённых данных
         {
-          EEPROM.write((a), ssidChar[a - 20]);               // save ssid and ssid length to EEPROM
-        }
-        EEPROM.write(saveSSIDLen, ssidLen);
+          for (unsigned int a = 20; a < 20 + ssidLen; a++)
+          {
+            EEPROM.write((a), ssidChar[a - 20]);               // save ssid and ssid length to EEPROM
+          }
+          EEPROM.write(saveSSIDLen, ssidLen);
         
-        for (unsigned int b = 40; b < 40 + passLen; b++)
-        {    
-          EEPROM.write((b), passwordChar[b - 40]);          // save password and password length to EEPROM
-        }
-        EEPROM.write(savePWLen, passLen);
+          for (unsigned int b = 40; b < 40 + passLen; b++)
+          {    
+            EEPROM.write((b), passwordChar[b - 40]);          // save password and password length to EEPROM
+          }
+          EEPROM.write(savePWLen, passLen);
 
-        for (unsigned int b = 60; b < 60 + m_idLen; b++)
+          for (unsigned int b = 60; b < 60 + m_idLen; b++)
+          {
+            EEPROM.write((b), AP_mqtt_clientid[b - 60]);
+          }
+          EEPROM.write(saveIDLen, m_idLen);
+
+          for (unsigned int a = 80; a < 80 + m_ipLen; a++)
+          {
+            EEPROM.write((a), AP_mqtt_server[a - 80]);
+          }
+          EEPROM.write(saveIPLen, m_ipLen);
+
+          for (unsigned int a = 95; a < 95 + m_portLen; a++)
+          {
+            EEPROM.write((a), AP_mqtt_port[a - 95]);
+          }
+          EEPROM.write(savePortLen, m_portLen);
+
+          for (unsigned int a = 100; a < 100 + m_loginLen; a++)
+          {
+            EEPROM.write((a), AP_mqtt_login[a - 100]);
+          }
+          EEPROM.write(saveMLoginLen, m_loginLen);
+
+          for (unsigned int a = 120; a < 120 + m_passLen; a++)
+          {
+            EEPROM.write((a), AP_mqtt_pass[a - 120]);
+          }
+          EEPROM.write(saveMPassLen, m_passLen);
+
+          EEPROM.commit();
+
+          #if DEBUG_MODE && DEBUG_EEPROM
+            Serial.println("EEPROM: WRITE_ssid: "+ String(ssidChar) + " WRITEidLen: "+ String(ssidLen));
+            Serial.println("EEPROM: WRITE_password: "+ String(passwordChar) + " WRITEidLen: "+ String(passLen));
+            Serial.println("EEPROM: WRITE_clientid: "+ String(AP_mqtt_clientid) + " WRITEidLen: "+ String(m_idLen));
+            Serial.println("EEPROM: WRITE_mqtt_server: "+ String(AP_mqtt_server) + " WRITEipLen: "+ String(m_ipLen));
+            Serial.println("EEPROM: WRITE_mqtt_port: "+ String(AP_mqtt_port) + " WRITEportLen: "+ String(m_portLen));
+            Serial.println("EEPROM: WRITE_mqtt_login: "+ String(AP_mqtt_login) + " WRITEloginLen: "+ String(m_loginLen));
+            Serial.println("EEPROM: WRITE_mqtt_pass: "+ String(AP_mqtt_pass) + " WRITEpassLen: "+ String(m_passLen));
+          #endif
+
+          tft.setCursor(16, 265);
+          tft.println("Settings saved. Restarting");
+
+          #if DEBUG_MODE 
+            Serial.println("WIFI AP: Settings saved. Restarting");
+          #endif
+        }
+        else
         {
-          EEPROM.write((b), AP_mqtt_clientid[b - 60]);
+          tft.setCursor(16, 265);
+          tft.println("Settings Invalid. Restart");                    
+
+          #if DEBUG_MODE 
+            Serial.println("WIFI AP: Settings Invalid. Excess length. Restarting");
+          #endif
+
+          delay(1000);
         }
-        EEPROM.write(saveIDLen, m_idLen);
-
-        for (unsigned int a = 80; a < 80 + m_ipLen; a++)
-        {
-          EEPROM.write((a), AP_mqtt_server[a - 80]);
-        }
-        EEPROM.write(saveIPLen, m_ipLen);
-
-        for (unsigned int a = 95; a < 95 + m_portLen; a++)
-        {
-          EEPROM.write((a), AP_mqtt_port[a - 95]);
-        }
-        EEPROM.write(savePortLen, m_portLen);
-
-        for (unsigned int a = 100; a < 100 + m_loginLen; a++)
-        {
-          EEPROM.write((a), AP_mqtt_login[a - 100]);
-        }
-        EEPROM.write(saveMLoginLen, m_loginLen);
-
-        for (unsigned int a = 120; a < 120 + m_passLen; a++)
-        {
-          EEPROM.write((a), AP_mqtt_pass[a - 120]);
-        }
-        EEPROM.write(saveMPassLen, m_passLen);
-
-        EEPROM.commit();
-
-        #if DEBUG_MODE && DEBUG_EEPROM
-          Serial.println("EEPROM: WRITE_ssid: "+ String(ssidChar) + " WRITEidLen: "+ String(ssidLen));
-          Serial.println("EEPROM: WRITE_password: "+ String(passwordChar) + " WRITEidLen: "+ String(passLen));
-          Serial.println("EEPROM: WRITE_clientid: "+ String(AP_mqtt_clientid) + " WRITEidLen: "+ String(m_idLen));
-          Serial.println("EEPROM: WRITE_mqtt_server: "+ String(AP_mqtt_server) + " WRITEipLen: "+ String(m_ipLen));
-          Serial.println("EEPROM: WRITE_mqtt_port: "+ String(AP_mqtt_port) + " WRITEportLen: "+ String(m_portLen));
-          Serial.println("EEPROM: WRITE_mqtt_login: "+ String(AP_mqtt_login) + " WRITEloginLen: "+ String(m_loginLen));
-          Serial.println("EEPROM: WRITE_mqtt_pass: "+ String(AP_mqtt_pass) + " WRITEpassLen: "+ String(m_passLen));
-        #endif
-
-        tft.setCursor(16, 265);
-        tft.println("Settings saved. Restarting");
-
-        #if DEBUG_MODE 
-          Serial.println("WIFI AP: Settings saved. Restarting");
-        #endif
 
         delay(1000);
         
@@ -1312,8 +1338,7 @@ void loop()
               Serial.println(String(DeviceName) + " go in Portable Dosimeter Mode.");
             #endif
 
-//            WiFi.mode( WIFI_OFF );            
-            WiFi.setSleepMode(WIFI_MODEM_SLEEP);                         // turn off wifi
+            WiFi.mode( WIFI_OFF );            
             WiFi.forceSleepBegin(); 
             delay(1);
             MQTTsend = 0;

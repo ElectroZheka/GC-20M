@@ -114,85 +114,9 @@ void drawHomePage()
   tft.setCursor(70, 309);
   tft.println("COUNT");
 
-
   drawIntTime();
-// {
-//         tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
-//         tft.setFont(&FreeSans12pt7b);
-//         tft.setTextSize(1);
-//         tft.setCursor(180, 283);
-//         tft.println("INT");
-
-//         switch(integrationMode)
-//         {
-//           case 0: 
-//             tft.setCursor(177, 309);
-//             tft.println("60 s");
-//             value = 60;
-//             break;
-//           case 1: 
-//             tft.setCursor(184, 309);
-//             tft.println("5 s");
-//             value = 5;
-//             break;
-//           case 2: 
-//             tft.setCursor(169, 309);
-//             tft.println("180 s");
-//             value = 180;
-//             break;
-//           default:
-//             break;
-//         }
-// }
-
-
-  // if (integrationMode == 0)
-  // {
-  //   tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
-  //   tft.setCursor(180, 283);
-  //   tft.println("INT");
-  //   tft.setCursor(177, 309);
-  //   tft.println("60 s");
-  // }
-  // else if (integrationMode == 1)
-  // {
-  //   tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
-  //   tft.setCursor(180, 283);
-  //   tft.println("INT");
-  //   tft.setCursor(184, 309);
-  //   tft.println("5 s");
-  // }
-  // else if (integrationMode == 2)
-  // {
-  //   tft.fillRoundRect(162, 259, 74, 57, 3, 0x2A86);
-  //   tft.setCursor(180, 283);
-  //   tft.println("INT");
-  //   tft.setCursor(169, 309);
-  //   tft.println("180 s");
-  // }
   drawBuzzer();
   drawLED();
-  // if (ledSwitch)
-  // {
-  //   tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
-  //   tft.drawBitmap(190, 153, ledOnBitmap, 45, 45, ILI9341_WHITE);
-  // }
-  // else if (!ledSwitch)
-  // {
-  //   tft.fillRoundRect(190, 151, 46, 51, 3, 0x6269);
-  //   tft.drawBitmap(190, 153, ledOffBitmap, 45, 45, ILI9341_WHITE);
-  // }
-  
-  // if (buzzerSwitch)
-  // {
-  //   tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
-  //   tft.drawBitmap(190, 208, buzzerOnBitmap, 45, 45, ILI9341_WHITE);
-  // }
-  // else if (!buzzerSwitch)
-  // {
-  //   tft.fillRoundRect(190, 205, 46, 51, 3, 0x6269);
-  //   tft.drawBitmap(190, 208, buzzerOffBitmap, 45, 45, ILI9341_WHITE);
-  // }
 
   tft.setFont(&FreeSans9pt7b);
 
@@ -763,6 +687,5 @@ void drawBuzzer()
 
 //=============================================================================================================================
 //=============================================================================================================================
-
 
 #endif
