@@ -63,6 +63,10 @@ unsigned int MQTTUpdateTime = 15;           // Интервал отправки
 
 PubSubClient MQTTclient(client);
 
+// String MQTT_TOPIC_AVAILABILITY = "";
+// String MQTT_TOPIC_STATE = "";
+// String MQTT_TOPIC_COMMAND = "";
+
 char msg[MSG_BUFFER_SIZE];
 char topic[MSG_BUFFER_SIZE];
 char buzzertopic[MSG_BUFFER_SIZE];
@@ -75,6 +79,7 @@ char CPMTopic[MSG_BUFFER_SIZE];
 char Doserate_uSv_Topic[MSG_BUFFER_SIZE];
 char Doserate_uR_Topic[MSG_BUFFER_SIZE];
 char DoseLevelTopic[MSG_BUFFER_SIZE];
+char AlarmThresholdTopic[MSG_BUFFER_SIZE];
 char AlarmThresholdCommandTopic[MSG_BUFFER_SIZE];
 char IntTimeTopic[MSG_BUFFER_SIZE];
 char MQTTUpdateTimeTopic[MSG_BUFFER_SIZE];
@@ -82,7 +87,6 @@ char CommandTopic[MSG_BUFFER_SIZE];
 char BuzzerCommandTopic[MSG_BUFFER_SIZE];
 char LightCommandTopic[MSG_BUFFER_SIZE];
 char ConvFactorCommandTopic[MSG_BUFFER_SIZE];
-char AlarmThresholdTopic[MSG_BUFFER_SIZE];
 char IntTimeCommandTopic[MSG_BUFFER_SIZE];
 char MQTTUpdateTimeCommandTopic[MSG_BUFFER_SIZE];
 char LWTTopic[MSG_BUFFER_SIZE];
@@ -319,31 +323,7 @@ void setup()
     Serial.println("==================================================================");
   #endif
 
-  snprintf (RSSI_Topic, MSG_BUFFER_SIZE, "%s/System/RSSI", MQTTdeviceID);
-  snprintf (batterytopic, MSG_BUFFER_SIZE, "%s/System/Battery", MQTTdeviceID);
-  snprintf (iptopic, MSG_BUFFER_SIZE, "%s/System/IP", MQTTdeviceID);
-
-  snprintf (buzzertopic, MSG_BUFFER_SIZE, "%s/System/Buzzer", MQTTdeviceID);
-  snprintf (lighttopic, MSG_BUFFER_SIZE, "%s/System/Light", MQTTdeviceID);
-  snprintf (AlarmThresholdTopic, MSG_BUFFER_SIZE, "%s/System/AlarmThreshold", MQTTdeviceID);
-  snprintf (ConvFactorTopic, MSG_BUFFER_SIZE, "%s/System/ConversionFactor", MQTTdeviceID);
-  snprintf (IntTimeTopic, MSG_BUFFER_SIZE, "%s/System/Integration_Time", MQTTdeviceID);
-  snprintf (MQTTUpdateTimeTopic, MSG_BUFFER_SIZE, "%s/System/MQTTUpdate_Time", MQTTdeviceID);
-
-  snprintf (CPMTopic, MSG_BUFFER_SIZE, "%s/Doserate/CPM", MQTTdeviceID);
-  snprintf (Doserate_uSv_Topic, MSG_BUFFER_SIZE, "%s/Doserate/uSv_hr", MQTTdeviceID);
-  snprintf (Doserate_uR_Topic, MSG_BUFFER_SIZE, "%s/Doserate/uR_hr", MQTTdeviceID);
-  snprintf (DoseLevelTopic, MSG_BUFFER_SIZE, "%s/Doserate/DoseLevel", MQTTdeviceID);
-
-  snprintf (BuzzerCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Buzzer", MQTTdeviceID);
-  snprintf (LightCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Light", MQTTdeviceID);
-  snprintf (AlarmThresholdCommandTopic, MSG_BUFFER_SIZE, "%s/Control/AlarmThreshold", MQTTdeviceID);
-  snprintf (ConvFactorCommandTopic, MSG_BUFFER_SIZE, "%s/Control/ConversionFactor", MQTTdeviceID);
-  snprintf (IntTimeCommandTopic, MSG_BUFFER_SIZE, "%s/Control/Integration_Time", MQTTdeviceID);
-  snprintf (MQTTUpdateTimeCommandTopic, MSG_BUFFER_SIZE, "%s/Control/MQTTUpdate_Time", MQTTdeviceID);
-
-  snprintf (CommandTopic, MSG_BUFFER_SIZE, "%s/Control/#", MQTTdeviceID );
-  snprintf (LWTTopic, MSG_BUFFER_SIZE, "%s/System/LWT", MQTTdeviceID );
+  updateMqttTopic();
 
   attachInterrupt(interruptPin, isr, FALLING);
 
